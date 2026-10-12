@@ -1,0 +1,19 @@
+# Python virtual environment
+.venv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+
+# Environment variables and secrets
+.env
+.env.*
+
+# Keep an example environment template if needed
+!.env.example
+
+# IDE settings
+.vscode/
+
+# Test-generated artifacts
+artifacts/
