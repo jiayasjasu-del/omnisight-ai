@@ -1,0 +1,34 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap');
+@import "tailwindcss";
+
+:root {
+  --canvas: #f8f9fc;
+  --ink: #1e293b;
+  --midnight: #0b1c30;
+  --blue: #0284c7;
+  --blue-hover: #0369a1;
+  --line: #e2e8f0;
+  --font-display: 'Plus Jakarta Sans', 'Segoe UI', sans-serif;
+  font-family: Inter, 'Segoe UI', sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  color: var(--ink);
+  background: var(--canvas);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input {
+  font-family: inherit;
+}
