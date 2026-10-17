@@ -175,4 +175,3 @@ def test_webhook_build_live_execution(client):
     assert "mobile" in job_data["artifacts"]
     assert Path(job_data["artifacts"]["desktop"]).exists()
     assert Path(job_data["artifacts"]["mobile"]).exists()
-

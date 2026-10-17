@@ -124,4 +124,3 @@ Screenshots are written to `artifacts/omnistore-desktop.png` and `artifacts/omni
 - **Internship:** Infotact Solutions
 - **Domain:** Generative AI
 - **Project:** OmniSight — Multimodal UI Self-Healing and RPA Agent
-
