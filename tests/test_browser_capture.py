@@ -46,11 +46,33 @@ def test_omnistore_responsive_shopping_flow(viewport_name, width, height):
             page.get_by_role("button", name="Increase Studio Wireless Headphones quantity").click()
             assert page.get_by_role("heading", name="Shopping bag (2)").is_visible()
             assert page.locator(".cart-summary strong").inner_text() == "₹16,998"
-            assert page.get_by_role("button", name="Checkout unavailable").is_disabled()
+            page.get_by_role("button", name="Proceed to checkout").click()
+            assert page.get_by_role("heading", name="Checkout").is_visible()
+
+            page.get_by_label("Full name").fill("Aarav Patel")
+            page.get_by_label("Email address").fill("aarav@example.com")
+            page.get_by_label("Delivery address").fill("42 MG Road, Brigade Junction")
+            page.get_by_label("City").fill("Bengaluru")
+            page.get_by_label("PIN code").fill("560001")
+
+            page.get_by_role("button", name="Place order").click()
+
+            assert page.get_by_role("heading", name="Order confirmed!").is_visible()
+            assert page.get_by_text("Aarav Patel").first.is_visible()
+            assert page.locator(".confirmation-total-row strong").inner_text() == "₹16,998"
+            assert page.get_by_role("button", name="Continue shopping").is_visible()
+
+            dimensions_after = page.evaluate(
+                "({viewport: document.documentElement.clientWidth, content: document.documentElement.scrollWidth})"
+            )
+            assert dimensions_after["content"] <= dimensions_after["viewport"]
 
             ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
             page.screenshot(
                 path=str(ARTIFACTS_DIR / f"omnistore-{viewport_name}.png"), full_page=True
             )
+
+            page.get_by_role("button", name="Continue shopping").click()
+            assert page.locator("#shopping-cart").count() == 0
         finally:
             browser.close()
