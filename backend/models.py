@@ -32,7 +32,7 @@ class BuildWebhookPayload(BaseModel):
 
     storefront_url: str = Field(
         default="http://127.0.0.1:5173",
-        description="Local URL of the OmniStore instance to test",
+        description="Local URL of the web page to audit or run the demo flow against",
     )
     branch: str | None = Field(default=None, description="Git branch name")
     commit_sha: str | None = Field(default=None, description="Git commit SHA")
@@ -44,7 +44,7 @@ class BuildWebhookPayload(BaseModel):
         trimmed = v.strip()
         if not is_local_url(trimmed):
             raise ValueError(
-                f"Invalid storefront_url '{v}'. OmniSight demo is restricted to local storefront URLs "
+                f"Invalid storefront_url '{v}'. OmniSight browser jobs are restricted to local URLs "
                 f"(e.g. http://127.0.0.1:5173 or http://localhost:5173)."
             )
         return trimmed
@@ -73,3 +73,15 @@ class JobResponse(BaseModel):
     )
     error: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    visual_comparison: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Per-viewport baseline and pixel-difference results",
+    )
+    findings: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Browser-detected UI issues with evidence and repair suggestions",
+    )
+    ai_analysis: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Optional vision-model explanation and suggested repairs; never applied automatically",
+    )

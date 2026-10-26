@@ -1,0 +1,185 @@
+import { useEffect, useState } from 'react'
+import './AuditDashboard.css'
+
+const API = '/api'
+
+async function readJson(response) {
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const detail = typeof payload.detail === 'string' ? payload.detail : 'The request could not be completed.'
+    throw new Error(detail)
+  }
+  return payload
+}
+
+function Mark({ children }) {
+  return <span className="audit-mark" aria-hidden="true">{children}</span>
+}
+
+function StatusPill({ status }) {
+  const label = status === 'running' ? 'Audit running' : status === 'queued' ? 'Waiting to start' : 'Ready to audit'
+  return <span className={`audit-status audit-status-${status || 'idle'}`}><i />{label}</span>
+}
+
+function ScreenshotCard({ jobId, viewport, title, description }) {
+  return (
+    <article className="screenshot-card">
+      <div className="screenshot-heading">
+        <div>
+          <h3>{title}</h3>
+          <p>{description}</p>
+        </div>
+        <a href={`${API}/jobs/${jobId}/screenshots/${viewport}`} target="_blank" rel="noreferrer" aria-label={`Open ${title} screenshot in a new tab`}>
+          Open image ↗
+        </a>
+      </div>
+      <a className="screenshot-preview" href={`${API}/jobs/${jobId}/screenshots/${viewport}`} target="_blank" rel="noreferrer">
+        <img src={`${API}/jobs/${jobId}/screenshots/${viewport}`} alt={`${title} screenshot of the audited website`} />
+      </a>
+    </article>
+  )
+}
+
+export default function AuditDashboard() {
+  const [siteUrl, setSiteUrl] = useState('http://127.0.0.1:5173')
+  const [serviceStatus, setServiceStatus] = useState('checking')
+  const [job, setJob] = useState(null)
+  const [report, setReport] = useState(null)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    document.title = 'OmniSight | Responsive UI audit'
+    fetch(`${API}/health`)
+      .then(readJson)
+      .then(() => { if (active) setServiceStatus('online') })
+      .catch(() => { if (active) setServiceStatus('offline') })
+    return () => { active = false }
+  }, [])
+
+  async function runAudit(event) {
+    event.preventDefault()
+    setBusy(true)
+    setError('')
+    setReport(null)
+    setJob(null)
+
+    try {
+      const queued = await readJson(await fetch(`${API}/webhooks/audit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storefront_url: siteUrl.trim() }),
+      }))
+      setJob({ job_id: queued.job_id, status: queued.status })
+
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        await new Promise(resolve => window.setTimeout(resolve, 1500))
+        const current = await readJson(await fetch(`${API}/jobs/${queued.job_id}`))
+        setJob(current)
+        if (current.status === 'completed') {
+          setReport(current)
+          return
+        }
+        if (current.status === 'failed') {
+          throw new Error(current.error || 'The audit failed. Try again after checking the backend terminal.')
+        }
+      }
+      throw new Error('The audit is taking longer than expected. You can check its status in the API docs.')
+    } catch (auditError) {
+      setError(auditError.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const findings = report?.findings || []
+  const ai = report?.ai_analysis || {}
+
+  return (
+    <div className="audit-app">
+      <aside className="audit-sidebar">
+        <a className="audit-brand" href="/audit" aria-label="OmniSight audit home">
+          <Mark>O</Mark><span>omni<span>sight</span></span>
+        </a>
+        <p className="sidebar-label">WORKSPACE</p>
+        <a className="sidebar-link active" href="/audit"><span>◫</span> UI audits</a>
+        <a className="sidebar-link" href="/"><span>↗</span> Open demo store</a>
+        <div className="sidebar-note">
+          <span className="note-icon">✦</span>
+          <strong>Responsive checks</strong>
+          <p>Review the same page at desktop and mobile sizes.</p>
+        </div>
+        <div className="sidebar-user"><span className="user-avatar">OS</span><span><strong>OmniSight</strong><small>Local workspace</small></span></div>
+      </aside>
+
+      <main className="audit-main">
+        <header className="audit-topbar">
+          <span>Workspace <b>/</b> UI audits</span>
+          <span className={`connection-label connection-${serviceStatus}`}><i />{serviceStatus === 'online' ? 'Backend connected' : serviceStatus === 'offline' ? 'Backend offline' : 'Checking backend'}</span>
+        </header>
+
+        <div className="audit-content">
+          <div className="page-intro">
+            <div>
+              <p className="page-kicker">QUALITY CHECK</p>
+              <h1>Responsive UI audit</h1>
+              <p className="page-description">Capture a website at desktop and mobile sizes, then review browser findings.</p>
+            </div>
+            <StatusPill status={busy ? (job?.status || 'queued') : report ? 'completed' : 'idle'} />
+          </div>
+
+          <section className="audit-form-card">
+            <div className="form-card-title"><span className="form-icon">⌕</span><div><h2>Start a new audit</h2><p>Enter a local website address to inspect.</p></div></div>
+            <form className="audit-form" onSubmit={runAudit}>
+              <label htmlFor="site-url">Website address</label>
+              <div className="url-row">
+                <span className="url-prefix">↗</span>
+                <input id="site-url" type="url" required value={siteUrl} onChange={event => setSiteUrl(event.target.value)} placeholder="http://127.0.0.1:5173" />
+                <button type="submit" disabled={busy || serviceStatus === 'offline'}>{busy ? <><span className="button-spinner" /> Auditing…</> : <>Run audit <span>→</span></>}</button>
+              </div>
+              <p className="form-hint">The backend currently accepts local addresses such as localhost and 127.0.0.1.</p>
+              <button className="sample-target-button" type="button" onClick={() => setSiteUrl(`${window.location.origin}/audit-fixture`)}>
+                Use sample page with a known mobile issue <span>↗</span>
+              </button>
+            </form>
+            {busy && <div className="progress-line"><span /></div>}
+            {error && <div className="audit-error" role="alert"><strong>Audit needs attention</strong><span>{error}</span></div>}
+          </section>
+
+          {!report && !busy && (
+            <section className="welcome-card">
+              <div className="welcome-art"><div className="art-window"><span /><span /><span /><div className="art-bars"><i /><i /><i /><i /></div></div><div className="art-phone"><span /><i /><i /><i /></div><div className="art-check">✓</div></div>
+              <div><p className="page-kicker">YOUR NEXT STEP</p><h2>One audit. Two screen sizes.</h2><p>Run an audit to capture the page and see any browser-detected layout or accessibility checks here.</p><div className="welcome-points"><span>Desktop screenshot</span><span>Mobile screenshot</span><span>Findings and suggestions</span></div></div>
+            </section>
+          )}
+
+          {busy && <section className="working-card" aria-live="polite"><div className="working-spinner" /><div><strong>Your audit is running</strong><p>Opening the page and capturing desktop and mobile screenshots. This usually takes a few seconds.</p></div></section>}
+
+          {report && (
+            <>
+              <section className="result-banner">
+                <div className="result-icon">✓</div>
+                <div><p className="page-kicker">AUDIT COMPLETE</p><h2>{findings.length === 0 ? 'No automatic issues found' : `${findings.length} finding${findings.length === 1 ? '' : 's'} to review`}</h2><p>{ai.summary || `The browser checks completed for ${report.storefront_url}. Review both screenshots below.`}</p></div>
+                <span className="result-duration">Completed</span>
+              </section>
+
+              <div className="section-heading"><div><h2>Screen captures</h2><p>Compare how the page appears at each viewport.</p></div><span className="job-chip">Job {report.job_id.slice(0, 8)}</span></div>
+              <div className="screenshot-grid">
+                <ScreenshotCard jobId={report.job_id} viewport="desktop" title="Desktop" description="1440 × 1000 viewport" />
+                <ScreenshotCard jobId={report.job_id} viewport="mobile" title="Mobile" description="390 × 844 viewport" />
+              </div>
+
+              <section className="findings-card">
+                <div className="section-heading"><div><h2>Findings</h2><p>Rule-based browser checks and suggested next steps.</p></div><span className={`finding-count ${findings.length ? 'has-findings' : ''}`}>{findings.length} found</span></div>
+                {findings.length === 0 ? <div className="empty-findings"><span>✓</span><div><strong>All checked items look good</strong><p>No overflow, image-loading, or basic labeling issues were detected in this run.</p></div></div> : <div className="finding-list">{findings.map((finding, index) => <article className="finding-item" key={`${finding.code || 'finding'}-${index}`}><span className="finding-number">{String(index + 1).padStart(2, '0')}</span><div><h3>{finding.title || finding.code || 'UI finding'}</h3><p>{finding.evidence || finding.message || 'The browser reported an item to review.'}</p>{finding.affected_elements?.length > 0 && <div className="affected-elements"><strong>Elements to inspect</strong>{finding.affected_elements.map((element, elementIndex) => <code key={`${element.selector}-${elementIndex}`}>{element.selector} · {element.width}{element.overflowBy !== '0px' ? ` · ${element.overflowBy} wider than container` : ''}</code>)}</div>}{finding.suggestion && <small>Suggested fix: {finding.suggestion}</small>}</div><span className="viewport-tag">{finding.viewport || 'Page'}</span></article>)}</div>}
+                {ai.status === 'not_configured' && <p className="ai-note">AI explanations are not enabled. The browser checks and screenshots are available without an API key.</p>}
+              </section>
+            </>
+          )}
+          <footer className="audit-footer">OmniSight <span>·</span> Local UI quality workspace</footer>
+        </div>
+      </main>
+    </div>
+  )
+}
