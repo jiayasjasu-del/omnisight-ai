@@ -18,9 +18,9 @@ Implemented:
 - Pixel-based visual comparison of stable desktop/mobile storefront screenshots, with local baselines in `artifacts/baselines/` and highlighted diff images for later runs
 - Readable per-viewport visual assessment: changes at or above 0.5% are marked `review_required`; smaller changes are `within_threshold`; first captures are marked `baseline_created`
 - Initial rule-based UI diagnosis: reports horizontal overflow, failed images, unnamed buttons/links, unlabeled form fields, and browser errors with evidence and repair suggestions
-- OmniSight dashboard at `/audit` for submitting audits, tracking completion, and viewing findings and desktop/mobile screenshots
+- OmniSight dashboard at `/audit` for submitting audits, tracking completion, viewing findings and desktop/mobile screenshots, and downloading a shareable Markdown report with evidence and screenshot links
 - Separate `/audit-fixture` practice page with a known mobile overflow issue; a local audit flagged its mobile content width (706px) against the 390px viewport
-- Overflow findings now include likely element selectors and dimensions to help developers locate the source; this enhanced detail still needs a fresh run after restarting the backend
+- Overflow findings include likely element selectors and dimensions; a fresh sample audit verified the detector reports 706px of content in a 390px mobile viewport and identifies the table wrapper and card
 
 Optional screenshot-based AI explanations are implemented but require an `OPENAI_API_KEY`; the backend does not automatically edit target websites. The OmniStore shopping flow remains a sample target used to exercise automation.
 
@@ -158,3 +158,10 @@ Screenshots are written to `artifacts/omnistore-desktop.png` and `artifacts/omni
 - **Internship:** Infotact Solutions
 - **Domain:** Generative AI
 - **Project:** OmniSight — Multimodal UI Self-Healing and RPA Agent
+
+### October 27 project update
+
+- Added a downloadable Markdown report to completed UI audits. It includes job details, desktop/mobile screenshot links, detected evidence, affected elements, and suggested next steps.
+- Reports are generated in the browser and do not require a separate service or API key.
+- Verified: an audit of `/audit-fixture` reported horizontal overflow at mobile width (706px content against a 390px viewport), listed likely affected elements, and completed with desktop/mobile screenshots. The dashboard report download is available for saving this evidence.
+- Next: make the suggested repair more actionable, then rerun the fixture audit to show the before/after result.
