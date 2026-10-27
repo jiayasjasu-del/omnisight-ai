@@ -17,19 +17,21 @@ Implemented:
 - Automated desktop and mobile screenshot capture saved in `artifacts/` and per-job in `artifacts/jobs/{job_id}/`
 - Pixel-based visual comparison of stable desktop/mobile storefront screenshots, with local baselines in `artifacts/baselines/` and highlighted diff images for later runs
 - Readable per-viewport visual assessment: changes at or above 0.5% are marked `review_required`; smaller changes are `within_threshold`; first captures are marked `baseline_created`
-- Initial rule-based UI diagnosis: reports horizontal overflow, failed images, unnamed buttons/links, unlabeled form fields, and browser errors with evidence and repair suggestions
+- Initial rule-based UI diagnosis: reports horizontal overflow, failed images, unnamed buttons/links, unlabeled form fields, and browser errors with evidence and repair suggestions; wide-table overflow can include a reviewable CSS proposal
 - OmniSight dashboard at `/audit` for submitting audits, tracking completion, viewing findings and desktop/mobile screenshots, and downloading a shareable Markdown report with evidence and screenshot links
 - Separate `/audit-fixture` practice page with a known mobile overflow issue; a local audit flagged its mobile content width (706px) against the 390px viewport
 - Overflow findings include likely element selectors and dimensions; a fresh sample audit verified the detector reports 706px of content in a 390px mobile viewport and identifies the table wrapper and card
 
 Optional screenshot-based AI explanations are implemented but require an `OPENAI_API_KEY`; the backend does not automatically edit target websites. The OmniStore shopping flow remains a sample target used to exercise automation.
 
-### Week 4 progress update — October 26, 2026
+### Week 4 progress update — October 26–27, 2026
 
 - Added a dashboard to run local responsive UI audits and review screenshots and findings.
-- Added a separate practice page with an intentional mobile-width problem. A local browser audit detected horizontal overflow on mobile.
-- Improved overflow evidence to include likely affected elements and measurements. The updated detail still needs a fresh audit after restarting the backend.
-- Next: verify the richer finding, then build a reviewable repair proposal before attempting any automatic fix.
+- Added a separate practice page (`/audit-fixture`) with an intentional mobile-width problem. A local browser audit consistently detected horizontal overflow on mobile.
+- Improved overflow evidence to include likely affected elements and measurements.
+- Added a reviewable CSS repair proposal attached to wide-table overflow findings. The proposal targets the table's scroll wrapper and recommends `overflow-x: auto`; it is displayed in the dashboard and included in downloaded Markdown reports. OmniSight does not apply it automatically.
+- Fixed a test assertion that checked for the string `"local storefront URLs"` which no longer matched the actual validation error message; updated to `"local URLs"`. All 8 API tests now pass.
+- Verified with a fresh audit: `/audit-fixture` reports 706 px content width against a 390 px mobile viewport and generates a repair proposal targeting `div.fixture-table-scroll`.
 
 ## Requirements
 
@@ -163,5 +165,11 @@ Screenshots are written to `artifacts/omnistore-desktop.png` and `artifacts/omni
 
 - Added a downloadable Markdown report to completed UI audits. It includes job details, desktop/mobile screenshot links, detected evidence, affected elements, and suggested next steps.
 - Reports are generated in the browser and do not require a separate service or API key.
-- Verified: an audit of `/audit-fixture` reported horizontal overflow at mobile width (706px content against a 390px viewport), listed likely affected elements, and completed with desktop/mobile screenshots. The dashboard report download is available for saving this evidence.
-- Next: make the suggested repair more actionable, then rerun the fixture audit to show the before/after result.
+- Verified: an audit of `/audit-fixture` reported horizontal overflow at mobile width (706 px content against a 390 px viewport), listed likely affected elements, and completed with desktop/mobile screenshots.
+
+### October 27 repair proposal update
+
+- Added a reviewable CSS proposal when an overflowing wide table has a parent wrapper without horizontal scrolling. The proposal is displayed with the finding in the dashboard and included in downloaded Markdown reports; OmniSight does not apply it to the audited site.
+- Fresh audit of `/audit-fixture` confirmed the proposal targets `div.fixture-table-scroll` with `max-width: 100%; overflow-x: auto;`.
+- Fixed a test-suite assertion that was checking for a stale error-message substring; all 8 API tests pass.
+- Next milestone: apply the proposal to an isolated copy or branch of the fixture, rerun the audit, and confirm the overflow finding disappears — demonstrating a before/after workflow.

@@ -79,6 +79,9 @@ function downloadAuditReport(report) {
         lines.push('')
       }
       if (finding.suggestion) lines.push(`**Suggested next step:** ${finding.suggestion}`, '')
+      if (finding.repair_proposal?.code) {
+        lines.push(`**${finding.repair_proposal.title}:** ${finding.repair_proposal.explanation}`, '', '```css', finding.repair_proposal.code, '```', '')
+      }
     })
   }
 
@@ -229,7 +232,7 @@ export default function AuditDashboard() {
 
               <section className="findings-card">
                 <div className="section-heading"><div><h2>Findings</h2><p>Rule-based browser checks and suggested next steps.</p></div><span className={`finding-count ${findings.length ? 'has-findings' : ''}`}>{findings.length} found</span></div>
-                {findings.length === 0 ? <div className="empty-findings"><span>✓</span><div><strong>All checked items look good</strong><p>No overflow, image-loading, or basic labeling issues were detected in this run.</p></div></div> : <div className="finding-list">{findings.map((finding, index) => <article className="finding-item" key={`${finding.code || 'finding'}-${index}`}><span className="finding-number">{String(index + 1).padStart(2, '0')}</span><div><h3>{finding.title || finding.code || 'UI finding'}</h3><p>{finding.evidence || finding.message || 'The browser reported an item to review.'}</p>{finding.affected_elements?.length > 0 && <div className="affected-elements"><strong>Elements to inspect</strong>{finding.affected_elements.map((element, elementIndex) => <code key={`${element.selector}-${elementIndex}`}>{element.selector} · {element.width}{element.overflowBy !== '0px' ? ` · ${element.overflowBy} wider than container` : ''}</code>)}</div>}{finding.suggestion && <small>Suggested fix: {finding.suggestion}</small>}</div><span className="viewport-tag">{finding.viewport || 'Page'}</span></article>)}</div>}
+                {findings.length === 0 ? <div className="empty-findings"><span>✓</span><div><strong>All checked items look good</strong><p>No overflow, image-loading, or basic labeling issues were detected in this run.</p></div></div> : <div className="finding-list">{findings.map((finding, index) => <article className="finding-item" key={`${finding.code || 'finding'}-${index}`}><span className="finding-number">{String(index + 1).padStart(2, '0')}</span><div><h3>{finding.title || finding.code || 'UI finding'}</h3><p>{finding.evidence || finding.message || 'The browser reported an item to review.'}</p>{finding.affected_elements?.length > 0 && <div className="affected-elements"><strong>Elements to inspect</strong>{finding.affected_elements.map((element, elementIndex) => <code key={`${element.selector}-${elementIndex}`}>{element.selector} · {element.width}{element.overflowBy !== '0px' ? ` · ${element.overflowBy} wider than container` : ''}</code>)}</div>}{finding.suggestion && <small>Suggested fix: {finding.suggestion}</small>}{finding.repair_proposal && <div className="repair-proposal"><strong>{finding.repair_proposal.title}</strong><p>{finding.repair_proposal.explanation}</p><pre><code>{finding.repair_proposal.code}</code></pre></div>}</div><span className="viewport-tag">{finding.viewport || 'Page'}</span></article>)}</div>}
                 {ai.status === 'not_configured' && <p className="ai-note">AI explanations are not enabled. The browser checks and screenshots are available without an API key.</p>}
               </section>
             </>

@@ -67,7 +67,7 @@ def test_webhook_build_validation_rejects_external_urls(client):
     for url in disallowed_urls:
         response = client.post("/webhooks/build", json={"storefront_url": url})
         assert response.status_code == 422, f"Expected 422 for {url}, got {response.status_code}"
-        assert "local storefront URLs" in response.text
+        assert "local URLs" in response.text
 
 
 def test_webhook_build_accepts_local_url(client):

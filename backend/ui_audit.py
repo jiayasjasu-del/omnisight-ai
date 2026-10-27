@@ -41,12 +41,37 @@ def audit_page(page: Any, viewport: str) -> list[dict[str, Any]]:
               .sort((a, b) => Number.parseInt(b.overflowBy, 10) - Number.parseInt(a.overflowBy, 10))
               .slice(0, 4);
 
+            const wideTable = Array.from(document.querySelectorAll("table"))
+              .find(table => table.scrollWidth > viewportWidth);
+            const tableWrapper = wideTable?.parentElement;
+            const wrapperOverflow = tableWrapper
+              ? getComputedStyle(tableWrapper).overflowX
+              : "";
+            const safeClasses = tableWrapper
+              ? Array.from(tableWrapper.classList).filter(name => /^[a-zA-Z_][\w-]*$/.test(name)).slice(0, 2)
+              : [];
+            const wrapperSelector = tableWrapper
+              ? tableWrapper.id
+                ? `${tableWrapper.tagName.toLowerCase()}#${CSS.escape(tableWrapper.id)}`
+                : safeClasses.length
+                  ? `${tableWrapper.tagName.toLowerCase()}${safeClasses.map(name => `.${name}`).join("")}`
+                  : tableWrapper.tagName.toLowerCase()
+              : "";
+            const repairProposal = tableWrapper && !["auto", "scroll"].includes(wrapperOverflow)
+              ? {
+                  title: "Contain the wide table in its wrapper",
+                  explanation: "This lets the table scroll inside the card on narrow screens instead of widening the whole page. Review the selector and test the result before keeping the change.",
+                  code: `${wrapperSelector} {\n  max-width: 100%;\n  overflow-x: auto;\n}`
+                }
+              : null;
+
             findings.push({
               code: "horizontal_overflow",
               severity: "warning",
               message: "Page content is wider than the viewport.",
               evidence: `Content width ${contentWidth}px; viewport ${viewportWidth}px. ${overflowingElements.length ? `Likely elements: ${overflowingElements.map(element => `${element.selector} (${element.width}, scrolls ${element.scrollWidth} in ${element.clientWidth})`).join("; ")}` : "No single overflowing element was identified."}`,
               affected_elements: overflowingElements,
+              repair_proposal: repairProposal,
               suggestion: "Inspect the listed element and its parent. For wide data tables, allow horizontal scrolling within the card; for other content, use responsive widths and min-width: 0."
             });
           }
