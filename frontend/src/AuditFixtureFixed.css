@@ -1,0 +1,36 @@
+/* Repaired fixture — all base styles are shared via AuditFixture.css (imported below).
+   The single intentional fix: let the table scroll inside the card rather than
+   widening the whole page. This is the CSS the repair proposal recommends. */
+.fixture-page--fixed .fixture-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* Badge colour distinguishes the repaired page from the broken one */
+.fixture-fixed-badge {
+  padding: 6px 8px;
+  border: 1px solid #bde4d5;
+  border-radius: 5px;
+  background: #edfaf4;
+  color: #1b7a55;
+  font-size: 8px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+/* Repaired-page header accent */
+.fixture-fixed-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 9px 12px;
+  border: 1px solid #bde4d5;
+  border-radius: 7px;
+  background: #f2fbf7;
+  color: #28745e;
+  font-size: 9px;
+}
+.fixture-fixed-header-bar strong {
+  font-weight: 700;
+}

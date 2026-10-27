@@ -199,9 +199,14 @@ export default function AuditDashboard() {
                 <button type="submit" disabled={busy || serviceStatus === 'offline'}>{busy ? <><span className="button-spinner" /> Auditing…</> : <>Run audit <span>→</span></>}</button>
               </div>
               <p className="form-hint">The backend currently accepts local addresses such as localhost and 127.0.0.1.</p>
-              <button className="sample-target-button" type="button" onClick={() => setSiteUrl(`${window.location.origin}/audit-fixture`)}>
-                Use sample page with a known mobile issue <span>↗</span>
-              </button>
+              <div className="sample-buttons">
+                <button className="sample-target-button" type="button" onClick={() => setSiteUrl(`${window.location.origin}/audit-fixture`)}>
+                  Use broken sample <span>↗</span>
+                </button>
+                <button className="sample-target-button sample-target-button--fixed" type="button" onClick={() => setSiteUrl(`${window.location.origin}/audit-fixture-fixed`)}>
+                  Use repaired sample <span>↗</span>
+                </button>
+              </div>
             </form>
             {busy && <div className="progress-line"><span /></div>}
             {error && <div className="audit-error" role="alert"><strong>Audit needs attention</strong><span>{error}</span></div>}

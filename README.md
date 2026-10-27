@@ -19,8 +19,9 @@ Implemented:
 - Readable per-viewport visual assessment: changes at or above 0.5% are marked `review_required`; smaller changes are `within_threshold`; first captures are marked `baseline_created`
 - Initial rule-based UI diagnosis: reports horizontal overflow, failed images, unnamed buttons/links, unlabeled form fields, and browser errors with evidence and repair suggestions; wide-table overflow can include a reviewable CSS proposal
 - OmniSight dashboard at `/audit` for submitting audits, tracking completion, viewing findings and desktop/mobile screenshots, and downloading a shareable Markdown report with evidence and screenshot links
-- Separate `/audit-fixture` practice page with a known mobile overflow issue; a local audit flagged its mobile content width (706px) against the 390px viewport
-- Overflow findings include likely element selectors and dimensions; a fresh sample audit verified the detector reports 706px of content in a 390px mobile viewport and identifies the table wrapper and card
+- Intentionally broken practice page at `/audit-fixture` with an unconstrained wide data table; mobile audits detect horizontal overflow (706px content vs. 390px viewport) and attach a reviewable CSS repair proposal
+- Repaired sample page at `/audit-fixture-fixed` applying `max-width: 100%; overflow-x: auto;` to the table wrapper; mobile audits confirm 0 overflow findings
+- Dashboard shortcuts to quickly populate either route ("Use broken sample" and "Use repaired sample") for immediate before/after comparison
 
 Optional screenshot-based AI explanations are implemented but require an `OPENAI_API_KEY`; the backend does not automatically edit target websites. The OmniStore shopping flow remains a sample target used to exercise automation.
 
@@ -30,8 +31,8 @@ Optional screenshot-based AI explanations are implemented but require an `OPENAI
 - Added a separate practice page (`/audit-fixture`) with an intentional mobile-width problem. A local browser audit consistently detected horizontal overflow on mobile.
 - Improved overflow evidence to include likely affected elements and measurements.
 - Added a reviewable CSS repair proposal attached to wide-table overflow findings. The proposal targets the table's scroll wrapper and recommends `overflow-x: auto`; it is displayed in the dashboard and included in downloaded Markdown reports. OmniSight does not apply it automatically.
-- Fixed a test assertion that checked for the string `"local storefront URLs"` which no longer matched the actual validation error message; updated to `"local URLs"`. All 8 API tests now pass.
-- Verified with a fresh audit: `/audit-fixture` reports 706 px content width against a 390 px mobile viewport and generates a repair proposal targeting `div.fixture-table-scroll`.
+- Added a separate repaired route (`/audit-fixture-fixed`) with the suggested CSS applied, plus "Use broken sample" and "Use repaired sample" dashboard shortcuts to complete an end-to-end detect → review → fix → re-audit before/after verification workflow.
+- Verified: `/audit-fixture` flags horizontal overflow with the repair proposal; `/audit-fixture-fixed` passes with 0 findings. All 8 API tests pass.
 
 ## Requirements
 
@@ -120,6 +121,41 @@ The interactive OpenAPI documentation will be available at `http://127.0.0.1:800
    ```
    The job response includes `findings`, with a finding code, viewport, evidence, and repair suggestion, plus desktop and mobile audit screenshots under `artifacts/jobs/{job_id}/`. It also includes `ai_analysis`, with status `completed`, `not_configured`, `skipped`, or `error`.
 
+### Before/after audit workflow (testing the repair proposal)
+
+OmniSight includes a paired test fixture to demonstrate a complete detect → review → fix → re-audit cycle:
+
+1. **Broken sample (`/audit-fixture`)**:
+   Contains an unconstrained wide table.
+   - In the audit dashboard (`http://127.0.0.1:5173/audit`), click **Use broken sample** (fills `http://127.0.0.1:5173/audit-fixture`) and click **Run audit**.
+   - Result: Flags horizontal overflow at the mobile viewport (706px content vs. 390px viewport) and generates a reviewable CSS repair proposal:
+     ```css
+     div.fixture-table-scroll {
+       max-width: 100%;
+       overflow-x: auto;
+     }
+     ```
+   - The proposed CSS snippet is shown in the dashboard card and included in downloaded Markdown reports.
+
+2. **Repaired sample (`/audit-fixture-fixed`)**:
+   Applies the proposed `max-width: 100%; overflow-x: auto;` rule to the table wrapper. The table scrolls cleanly within its card on mobile screens without overflowing the page.
+   - In the audit dashboard, click **Use repaired sample** (fills `http://127.0.0.1:5173/audit-fixture-fixed`) and click **Run audit**.
+   - Result: 0 findings reported. The horizontal overflow issue is resolved.
+
+You can also run both audits directly via PowerShell:
+
+```powershell
+# Audit broken sample
+$body = @{ storefront_url = "http://127.0.0.1:5173/audit-fixture" } | ConvertTo-Json
+$job = Invoke-RestMethod -Uri "http://127.0.0.1:8000/webhooks/audit" -Method Post -ContentType "application/json" -Body $body
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/jobs/$($job.job_id)" -Method Get | ConvertTo-Json -Depth 8
+
+# Audit repaired sample
+$body = @{ storefront_url = "http://127.0.0.1:5173/audit-fixture-fixed" } | ConvertTo-Json
+$job = Invoke-RestMethod -Uri "http://127.0.0.1:8000/webhooks/audit" -Method Post -ContentType "application/json" -Body $body
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/jobs/$($job.job_id)" -Method Get | ConvertTo-Json -Depth 8
+```
+
 ## Run checks & test suites
 
 ### Frontend checks
@@ -172,4 +208,12 @@ Screenshots are written to `artifacts/omnistore-desktop.png` and `artifacts/omni
 - Added a reviewable CSS proposal when an overflowing wide table has a parent wrapper without horizontal scrolling. The proposal is displayed with the finding in the dashboard and included in downloaded Markdown reports; OmniSight does not apply it to the audited site.
 - Fresh audit of `/audit-fixture` confirmed the proposal targets `div.fixture-table-scroll` with `max-width: 100%; overflow-x: auto;`.
 - Fixed a test-suite assertion that was checking for a stale error-message substring; all 8 API tests pass.
-- Next milestone: apply the proposal to an isolated copy or branch of the fixture, rerun the audit, and confirm the overflow finding disappears — demonstrating a before/after workflow.
+
+### October 27 before/after audit milestone
+
+- Added a separate repaired sample route (`/audit-fixture-fixed`) applying `max-width: 100%; overflow-x: auto;` to the table wrapper while keeping `/audit-fixture` intact as the broken baseline.
+- Scoped repaired styles to ensure the repair does not leak into the broken fixture.
+- Added "Use broken sample" and "Use repaired sample" shortcut buttons to the audit dashboard for one-click route selection.
+- Cross-linked both sample pages so reviewers can switch between them directly in the browser.
+- Verified: `/audit-fixture` produces 1 horizontal overflow finding with a reviewable repair proposal; `/audit-fixture-fixed` produces 0 findings. All 8 backend API tests and frontend linting pass.
+

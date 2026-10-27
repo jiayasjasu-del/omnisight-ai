@@ -43,7 +43,7 @@ export default function AuditFixture() {
         <p className="fixture-issue-note"><strong>Practice issue:</strong> this table is deliberately too wide for a phone screen. OmniSight should report horizontal overflow at the mobile viewport.</p>
       </section>
 
-      <footer className="fixture-footer"><a href="/audit">← Return to OmniSight audit dashboard</a><span>Training fixture · No demo-store changes</span></footer>
+      <footer className="fixture-footer"><a href="/audit">← Return to OmniSight audit dashboard</a><span><a href="/audit-fixture-fixed">View repaired version →</a> · Training fixture · No demo-store changes</span></footer>
     </main>
   )
 }

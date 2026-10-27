@@ -51,6 +51,22 @@ input {
   text-decoration: underline;
 }
 
+.sample-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 9px;
+}
+
+/* Keeps margin-top from the base rule from stacking inside the row */
+.sample-buttons .sample-target-button {
+  margin-top: 0;
+}
+
+.sample-target-button--fixed {
+  color: #1b7a55;
+}
+
 .affected-elements {
   display: flex;
   flex-wrap: wrap;

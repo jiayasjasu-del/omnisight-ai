@@ -152,6 +152,7 @@ def test_job_lifecycle_mocked_failure(client):
 def test_webhook_build_live_execution(client):
     """End-to-end test executing real Playwright browser flow via webhook against local storefront."""
     import socket
+    import time
 
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.settimeout(1.0)
@@ -167,10 +168,20 @@ def test_webhook_build_live_execution(client):
     assert response.status_code == 202
     job_id = response.json()["job_id"]
 
-    job_res = client.get(f"/jobs/{job_id}")
-    assert job_res.status_code == 200
-    job_data = job_res.json()
-    assert job_data["status"] == "completed"
+    # The job runs in a background thread; poll until it reaches a terminal state.
+    job_data = {}
+    for _ in range(20):
+        job_res = client.get(f"/jobs/{job_id}")
+        assert job_res.status_code == 200
+        job_data = job_res.json()
+        if job_data["status"] in ("completed", "failed"):
+            break
+        time.sleep(1.5)
+
+    assert job_data["status"] == "completed", (
+        f"Job did not complete in time; last status: {job_data.get('status')}, "
+        f"error: {job_data.get('error')}"
+    )
     assert "desktop" in job_data["artifacts"]
     assert "mobile" in job_data["artifacts"]
     assert Path(job_data["artifacts"]["desktop"]).exists()
