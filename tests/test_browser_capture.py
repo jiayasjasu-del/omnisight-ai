@@ -18,9 +18,21 @@ def test_omnistore_responsive_shopping_flow(viewport_name, width, height):
         browser = playwright.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": width, "height": height})
         try:
-            response = page.goto(BASE_URL, wait_until="networkidle", timeout=30000)
+            page.route(
+                "**/*",
+                lambda route: route.abort()
+                if route.request.resource_type == "font"
+                or route.request.url.startswith(
+                    ("https://fonts.googleapis.com/", "https://fonts.gstatic.com/")
+                )
+                else route.continue_(),
+            )
+            response = page.goto(BASE_URL, wait_until="load", timeout=30000)
             assert response is not None and response.status == 200
-            assert page.get_by_role("heading", name="Better gear. Better everyday.").is_visible()
+            heading = page.get_by_role("heading", name="Better gear. Better everyday.")
+            heading.wait_for(state="visible", timeout=10000)
+            assert heading.is_visible()
+            page.locator(".product-card").first.wait_for(state="visible", timeout=10000)
             assert page.locator(".product-card").count() == 8
             background = page.locator(".storefront").evaluate(
                 "element => getComputedStyle(element).backgroundColor"

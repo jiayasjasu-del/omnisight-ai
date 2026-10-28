@@ -53,7 +53,10 @@ def run_playwright_flow(
                         )
 
                     # Verify hero section
-                    if not page.get_by_role("heading", name="Better gear. Better everyday.").is_visible():
+                    hero_heading = page.get_by_role("heading", name="Better gear. Better everyday.")
+                    try:
+                        hero_heading.wait_for(state="visible", timeout=10000)
+                    except PlaywrightTimeoutError:
                         raise RuntimeError("Hero heading 'Better gear. Better everyday.' was not visible")
 
                     # Verify initial catalog card count

@@ -11,11 +11,22 @@ from fastapi.responses import FileResponse
 
 from backend.ai_analyzer import analyze_ui_audit
 from backend.browser_runner import run_playwright_flow, run_ui_audit
+from backend.github_service import create_draft_pr, get_github_config, preview_draft_pr
 from backend.models import (
     BuildWebhookPayload,
     BuildWebhookResponse,
+    CompareRequest,
+    CompareResponse,
+    CreatePRRequest,
+    CreatePRResponse,
+    FindingDelta,
+    GitHubStatusResponse,
     HealthResponse,
+    JobListResponse,
     JobResponse,
+    JobSummary,
+    PreviewPRRequest,
+    PreviewPRResponse,
 )
 from backend.visual_diff import compare_or_create_baseline
 
@@ -263,3 +274,157 @@ def get_audit_screenshot(job_id: str, viewport: str) -> FileResponse:
         raise HTTPException(status_code=404, detail="Screenshot not found")
 
     return FileResponse(file_path, media_type="image/png")
+
+
+def _make_job_summary(job: dict) -> dict:
+    """Convert an internal job dict to a JobSummary-compatible dict."""
+    findings = job.get("findings", [])
+    ai = job.get("ai_analysis", {})
+    return {
+        "job_id": job["job_id"],
+        "status": job["status"],
+        "storefront_url": job["storefront_url"],
+        "created_at": job["created_at"],
+        "completed_at": job.get("completed_at"),
+        "finding_count": len(findings),
+        "has_ai_analysis": ai.get("status") == "completed",
+        "mode": job.get("metadata", {}).get("mode"),
+    }
+
+
+@app.get("/jobs", response_model=JobListResponse, tags=["Jobs"])
+def list_jobs() -> JobListResponse:
+    """Return all audit jobs, newest first, with summary metadata for the history view."""
+    with _jobs_lock:
+        all_jobs = list(_jobs_store.values())
+
+    summaries = [_make_job_summary(j) for j in all_jobs]
+    summaries.sort(key=lambda s: s["created_at"], reverse=True)
+    return JobListResponse(jobs=summaries, total=len(summaries))
+
+
+@app.post("/jobs/compare", response_model=CompareResponse, tags=["Jobs"])
+def compare_jobs(payload: CompareRequest) -> CompareResponse:
+    """Compare two completed audit jobs side-by-side, classifying findings as resolved, introduced, or unchanged."""
+    with _jobs_lock:
+        job_a = _jobs_store.get(payload.job_a)
+        job_b = _jobs_store.get(payload.job_b)
+
+    if not job_a:
+        raise HTTPException(status_code=404, detail=f"Job '{payload.job_a}' not found")
+    if not job_b:
+        raise HTTPException(status_code=404, detail=f"Job '{payload.job_b}' not found")
+
+    findings_a = job_a.get("findings", [])
+    findings_b = job_b.get("findings", [])
+
+    # Build lookup keys: (code, viewport)
+    def _key(f: dict) -> tuple:
+        return (f.get("code", ""), f.get("viewport", ""))
+
+    keys_a = {_key(f) for f in findings_a}
+    keys_b = {_key(f) for f in findings_b}
+
+    resolved = []
+    for f in findings_a:
+        k = _key(f)
+        if k not in keys_b:
+            resolved.append(FindingDelta(
+                status="resolved",
+                code=f.get("code", ""),
+                viewport=f.get("viewport", ""),
+                evidence=f.get("evidence", ""),
+                message=f.get("message", ""),
+            ))
+
+    introduced = []
+    for f in findings_b:
+        k = _key(f)
+        if k not in keys_a:
+            introduced.append(FindingDelta(
+                status="introduced",
+                code=f.get("code", ""),
+                viewport=f.get("viewport", ""),
+                evidence=f.get("evidence", ""),
+                message=f.get("message", ""),
+            ))
+
+    unchanged = []
+    for f in findings_b:
+        k = _key(f)
+        if k in keys_a:
+            unchanged.append(FindingDelta(
+                status="unchanged",
+                code=f.get("code", ""),
+                viewport=f.get("viewport", ""),
+                evidence=f.get("evidence", ""),
+                message=f.get("message", ""),
+            ))
+
+    count_a = len(findings_a)
+    count_b = len(findings_b)
+    if count_b < count_a:
+        summary = f"{count_a - count_b} finding(s) resolved between these runs."
+    elif count_b > count_a:
+        summary = f"{count_b - count_a} new finding(s) introduced between these runs."
+    elif count_b == 0:
+        summary = "Both runs passed with zero findings."
+    else:
+        summary = f"Both runs reported {count_a} finding(s)."
+
+    return CompareResponse(
+        job_a=JobSummary(**_make_job_summary(job_a)),
+        job_b=JobSummary(**_make_job_summary(job_b)),
+        findings_a_count=count_a,
+        findings_b_count=count_b,
+        resolved=resolved,
+        introduced=introduced,
+        unchanged=unchanged,
+        summary=summary,
+    )
+
+
+@app.get("/github/status", response_model=GitHubStatusResponse, tags=["GitHub"])
+def get_github_integration_status() -> GitHubStatusResponse:
+    """Check whether GitHub integration is configured on the backend server."""
+    return GitHubStatusResponse(**get_github_config())
+
+
+@app.post("/repairs/preview-pr", response_model=PreviewPRResponse, tags=["Repairs"])
+def preview_repair_pull_request(payload: PreviewPRRequest) -> PreviewPRResponse:
+    """Assemble draft PR metadata and exact unified diff for reviewer inspection before approval."""
+    with _jobs_lock:
+        jobs_copy = dict(_jobs_store)
+
+    try:
+        preview = preview_draft_pr(
+            job_id=payload.job_id,
+            finding_index=payload.finding_index,
+            jobs_store=jobs_copy,
+            target_file=payload.target_file,
+        )
+        return PreviewPRResponse(**preview)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/repairs/create-pr", response_model=CreatePRResponse, tags=["Repairs"])
+def submit_repair_pull_request(payload: CreatePRRequest) -> CreatePRResponse:
+    """Create a draft pull request on GitHub ONLY after explicit human reviewer approval."""
+    with _jobs_lock:
+        jobs_copy = dict(_jobs_store)
+
+    result = create_draft_pr(
+        job_id=payload.job_id,
+        finding_index=payload.finding_index,
+        approved=payload.approved,
+        jobs_store=jobs_copy,
+        repository=payload.repository,
+        base_branch=payload.base_branch,
+        proposed_branch=payload.proposed_branch,
+        target_file=payload.target_file,
+        pr_title=payload.pr_title,
+        pr_body=payload.pr_body,
+    )
+    return CreatePRResponse(**result)
+

@@ -186,3 +186,67 @@ def test_webhook_build_live_execution(client):
     assert "mobile" in job_data["artifacts"]
     assert Path(job_data["artifacts"]["desktop"]).exists()
     assert Path(job_data["artifacts"]["mobile"]).exists()
+
+
+def test_webhook_audit_lifecycle_mocked(client, monkeypatch):
+    """POST /webhooks/audit queues UI audit job and records ai_analysis on completion."""
+    import time
+    from backend import main as main_module
+
+    fake_findings = [
+        {
+            "code": "horizontal_overflow",
+            "viewport": "mobile",
+            "message": "Page content is wider than viewport.",
+            "evidence": "Content width 706px; viewport 390px.",
+        }
+    ]
+    fake_ai = {
+        "status": "completed",
+        "summary": "Mocked AI visual summary.",
+        "issues": [
+            {
+                "title": "Low contrast heading",
+                "severity": "medium",
+                "viewport": "mobile",
+                "evidence": "Grey text on light background",
+                "explanation": "Low contrast",
+                "suggested_fix": "color: #111;",
+                "verification_step": "Measure contrast",
+                "confidence": "high",
+            }
+        ],
+        "recommended_next_steps": ["Adjust heading color"],
+    }
+
+    monkeypatch.setattr(
+        main_module,
+        "run_ui_audit",
+        lambda storefront_url, output_dir: {
+            "screenshots": {"audit_desktop": "artifacts/mock_d.png", "audit_mobile": "artifacts/mock_m.png"},
+            "findings": fake_findings,
+        },
+    )
+    monkeypatch.setattr(main_module, "analyze_ui_audit", lambda screenshots, findings: fake_ai)
+
+    response = client.post(
+        "/webhooks/audit",
+        json={"storefront_url": "http://127.0.0.1:5173/audit-fixture"},
+    )
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+
+    job_data = {}
+    for _ in range(20):
+        res = client.get(f"/jobs/{job_id}")
+        assert res.status_code == 200
+        job_data = res.json()
+        if job_data["status"] in ("completed", "failed"):
+            break
+        time.sleep(0.1)
+
+    assert job_data["status"] == "completed"
+    assert len(job_data["findings"]) == 1
+    assert job_data["ai_analysis"]["status"] == "completed"
+    assert job_data["ai_analysis"]["summary"] == "Mocked AI visual summary."
+    assert len(job_data["ai_analysis"]["issues"]) == 1

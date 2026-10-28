@@ -82,14 +82,18 @@ If the environment already existed before visual comparison was added, install P
 From the repository root:
 
 ```powershell
-# Optional: enable vision-model analysis for UI audit jobs.
-# Set this in the same terminal before starting the backend; do not commit the key.
-$env:OPENAI_API_KEY = "your-api-key"
+# Optional: enable vision-model visual analysis for UI audit jobs.
+# Set this in your local terminal session before starting the backend.
+# Never commit API keys or put them in code, logs, or shared config.
+$env:OPENAI_API_KEY = "your-actual-api-key"
+
+# Optional: override default model (defaults to gpt-4o-mini)
+# $env:OPENAI_MODEL = "gpt-4o"
 
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-If `OPENAI_API_KEY` is not set, UI audits still run their browser checks and return `ai_analysis.status = "not_configured"`. When configured, the backend sends the audit screenshots and browser findings to the OpenAI Responses API for structured explanations and suggested repairs. The model does not edit files or apply repairs.
+If `OPENAI_API_KEY` is not set, UI audits remain fully functional, running all browser checks and returning `ai_analysis.status = "not_configured"`. When configured, the backend sends the captured desktop and mobile screenshots and browser findings to the vision model for visual review (clipped content, overlapping elements, and contrast). The model does not edit files or apply repairs.
 
 The interactive OpenAPI documentation will be available at `http://127.0.0.1:8000/docs`.
 
@@ -156,6 +160,55 @@ $job = Invoke-RestMethod -Uri "http://127.0.0.1:8000/webhooks/audit" -Method Pos
 Invoke-RestMethod -Uri "http://127.0.0.1:8000/jobs/$($job.job_id)" -Method Get | ConvertTo-Json -Depth 8
 ```
 
+## Optional AI visual analysis (Vision-Language Model)
+
+OmniSight includes an optional visual review step powered by a vision-language model. When configured, it inspects the desktop and mobile screenshots captured during a responsive UI audit to suggest visual improvements.
+
+### Capabilities & Scope
+
+The model identifies visual problems that rule-based DOM checks often miss:
+- **Clipped content**: Text or UI cards cut off by container boundaries or screen edges.
+- **Overlapping elements**: Colliding buttons, overlapping badges, or z-index stacking issues.
+- **Hard-to-read contrast**: Low contrast between text and backgrounds or difficult-to-read badges.
+- **Responsive discrepancies**: Unintended visual divergence between desktop (1440×1000) and mobile (390×844) layouts.
+
+### Setup instructions
+
+1. Set `OPENAI_API_KEY` in your terminal session before starting the backend:
+   ```powershell
+   # Windows PowerShell
+   $env:OPENAI_API_KEY = "your-api-key-here"
+
+   # Optional: specify model (defaults to gpt-4o-mini)
+   # $env:OPENAI_MODEL = "gpt-4o"
+   ```
+   ```bash
+   # Linux / macOS Bash
+   export OPENAI_API_KEY="your-api-key-here"
+   ```
+2. Start the backend:
+   ```powershell
+   .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+   ```
+3. Run an audit from the dashboard at `http://127.0.0.1:5173/audit`. The AI summary and suggestions will appear in a dedicated card below the deterministic findings.
+
+> **Security Note:** Never commit API keys to version control, embed them in client-side code, or include them in logs. OmniSight sanitizes error messages to prevent accidental token exposure.
+
+### Privacy and Data Flow
+
+- **Zero-call default**: When `OPENAI_API_KEY` is not set, **no external network requests are made**. The audit runs entirely on your local machine using Playwright.
+- **Data transmitted when enabled**:
+  - The captured desktop and mobile screenshot images (Base64-encoded over HTTPS).
+  - The array of browser-detected findings (evidence strings, selectors, and dimensions) for background context.
+- **Data NOT transmitted**: Target website source code, repository files, backend files, environment variables, database contents, or user session credentials are never sent to the model.
+- **Review-only guarantee**: The vision model output is strictly advisory. OmniSight never writes files, alters the target website, or opens automated pull requests.
+
+### Limitations & Disclaimers
+
+- AI visual suggestions are **hypotheses for human review**, not confirmed defects.
+- Vision models may occasionally hallucinate or overlook subtle styling details.
+- Always cross-reference suggested issues against the actual screenshot captures and browser developer tools before making changes.
+
 ## Run checks & test suites
 
 ### Frontend checks
@@ -167,12 +220,16 @@ npm run lint
 npm run build
 ```
 
-### Backend API tests
+### Backend API & AI analyzer tests
 
 From the repository root:
 
 ```powershell
+# Run backend API tests
 .\.venv\Scripts\python.exe -m pytest tests\test_api.py -v
+
+# Run AI vision analyzer unit tests (uses mocked responses, zero API credits spent)
+.\.venv\Scripts\python.exe -m pytest tests\test_ai_analyzer.py -v
 ```
 
 ### Playwright browser flow tests
@@ -183,7 +240,13 @@ From the repository root (ensure the storefront is running at `http://127.0.0.1:
 .\.venv\Scripts\python.exe -m pytest tests\test_browser_capture.py -v
 ```
 
-To run all test suites together:
+### GitHub Draft PR workflow tests
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_github_pr.py -v
+```
+
+To run all 30 automated tests across all test suites:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -v
@@ -216,4 +279,27 @@ Screenshots are written to `artifacts/omnistore-desktop.png` and `artifacts/omni
 - Added "Use broken sample" and "Use repaired sample" shortcut buttons to the audit dashboard for one-click route selection.
 - Cross-linked both sample pages so reviewers can switch between them directly in the browser.
 - Verified: `/audit-fixture` produces 1 horizontal overflow finding with a reviewable repair proposal; `/audit-fixture-fixed` produces 0 findings. All 8 backend API tests and frontend linting pass.
+
+### October 27 screenshot-based visual analysis milestone
+
+- Added optional Vision-Language Model analysis to UI audits (`backend/ai_analyzer.py`) targeting clipped content, overlapping elements, and contrast issues.
+- Implemented robust structured output parsing with Pydantic field normalization and automatic redaction of API key patterns from error messages.
+- Added dedicated dashboard UI section (`.ai-analysis-card`) clearly separating AI suggestions from deterministic findings with priority tags, viewport badges, evidence, explanations, review-only suggested fixes, and verification steps.
+- Updated Markdown audit reports to export AI visual review suggestions with clear disclaimer notes.
+- Added 8 unit tests in `tests/test_ai_analyzer.py` covering no-key, skipped, mocked success, provider exceptions, key scrubbing, and response validation; added mocked audit lifecycle test in `tests/test_api.py`.
+
+### October 28 human-approved GitHub draft PR milestone
+
+- Added GitHub draft PR workflow (`backend/github_service.py`) allowing human reviewers to review proposed repairs, inspect repository targets, base branches, generated branch names, and exact unified diffs.
+- Strictly requires explicit approval (`approved: true`) before opening a draft pull request; PRs are strictly opened as **Draft PRs** (`draft: true`).
+- Server-side token management via `GITHUB_TOKEN` environment variable; zero credentials or sensitive tokens exposed to client or logs; clean "not configured" status reporting.
+- Added 11 unit tests in `tests/test_github_pr.py` covering status endpoints, unapproved submission rejection, missing configuration, unified diff generation, and draft PR creation.
+
+### October 28 audit history & regression tracking milestone
+
+- Added audit history view (`frontend/src/AuditHistory.jsx` and `AuditHistory.css`) accessible via `/audit/history` and the dashboard sidebar.
+- Implemented `GET /jobs` and `POST /jobs/compare` backend endpoints for side-by-side run comparisons.
+- Classifies findings between two audit runs into `resolved`, `introduced`, and `unchanged` categories with delta summaries and visual screenshot comparisons.
+- Verified: all 30 automated backend tests pass; frontend build and oxlint linting pass with 0 errors and 0 warnings.
+
 

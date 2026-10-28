@@ -6,6 +6,7 @@ import App from './App.jsx'
 import AuditDashboard from './AuditDashboard.jsx'
 import AuditFixture from './AuditFixture.jsx'
 import AuditFixtureFixed from './AuditFixtureFixed.jsx'
+import AuditHistory from './AuditHistory.jsx'
 
 const currentPage = window.location.pathname.replace(/\/$/, '')
 const Page = currentPage === '/audit'
@@ -14,10 +15,13 @@ const Page = currentPage === '/audit'
     ? AuditFixture
     : currentPage === '/audit-fixture-fixed'
       ? AuditFixtureFixed
-      : App
+      : currentPage === '/audit/history'
+        ? AuditHistory
+        : App
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <Page />
   </StrictMode>,
 )
+
