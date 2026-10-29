@@ -9,10 +9,14 @@ exposes or logs GitHub access tokens.
 from __future__ import annotations
 
 import base64
+import difflib
 import os
 import re
+from pathlib import Path
 from typing import Any
 import httpx
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _sanitize_token(text: str) -> str:
@@ -44,13 +48,36 @@ def get_github_config() -> dict[str, Any]:
 def generate_repair_diff(
     proposal: dict[str, Any],
     target_file: str = "frontend/src/AuditFixture.css",
+    root_dir: Path | None = None,
 ) -> tuple[str, str]:
-    """Generate the exact proposed patch and unified diff text for reviewer inspection."""
+    """Generate the exact proposed patch and unified diff text against existing file contents."""
     code = proposal.get("code", "").strip()
     if not code:
         code = "/* Proposed repair */"
 
-    # Format CSS lines as diff additions
+    root = root_dir or PROJECT_ROOT
+    local_path = root / target_file
+
+    if local_path.is_file():
+        try:
+            existing_text = local_path.read_text(encoding="utf-8")
+            new_text = existing_text.rstrip() + f"\n\n/* OmniSight automated fix */\n{code}\n"
+            diff_lines = list(
+                difflib.unified_diff(
+                    existing_text.splitlines(keepends=True),
+                    new_text.splitlines(keepends=True),
+                    fromfile=f"a/{target_file}",
+                    tofile=f"b/{target_file}",
+                    n=2,
+                )
+            )
+            diff_text = "".join(diff_lines)
+            if diff_text:
+                return code, diff_text
+        except Exception:
+            pass
+
+    # Fallback for new files or unreadable paths
     patch_lines = [f"+{line}" for line in code.splitlines()]
     patch_content = "\n".join(patch_lines)
 

@@ -22,6 +22,9 @@ Implemented:
 - Intentionally broken practice page at `/audit-fixture` with an unconstrained wide data table; mobile audits detect horizontal overflow (706px content vs. 390px viewport) and attach a reviewable CSS repair proposal
 - Repaired sample page at `/audit-fixture-fixed` applying `max-width: 100%; overflow-x: auto;` to the table wrapper; mobile audits confirm 0 overflow findings
 - Dashboard shortcuts to quickly populate either route ("Use broken sample" and "Use repaired sample") for immediate before/after comparison
+- Audit history view at `/audit/history` with side-by-side delta comparisons (resolved, introduced, unchanged findings)
+- Human-approved GitHub draft PR preparation workflow with exact unified diff inspection and server-side token safety
+- **5-Minute Presentation Guide**: See [DEMO.md](DEMO.md) for the walkthrough script covering the UI audit and human-reviewed repair prototype, diff preview, and port recovery steps
 
 Optional screenshot-based AI explanations are implemented but require an `OPENAI_API_KEY`; the backend does not automatically edit target websites. The OmniStore shopping flow remains a sample target used to exercise automation.
 
@@ -258,7 +261,7 @@ Screenshots are written to `artifacts/omnistore-desktop.png` and `artifacts/omni
 
 - **Internship:** Infotact Solutions
 - **Domain:** Generative AI
-- **Project:** OmniSight — Multimodal UI Self-Healing and RPA Agent
+- **Project:** OmniSight — UI Audit & Human-Reviewed Repair Workflow Prototype
 
 ### October 27 project update
 

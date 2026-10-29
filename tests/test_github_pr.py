@@ -70,7 +70,7 @@ def test_github_config_configured(monkeypatch):
 
 
 def test_generate_repair_diff():
-    """Verify diff generation formats valid unified diff additions."""
+    """Verify diff generation patches against existing file contents and preserves styles."""
     proposal = {
         "code": "div.fixture-table-scroll {\n  max-width: 100%;\n  overflow-x: auto;\n}"
     }
@@ -80,6 +80,21 @@ def test_generate_repair_diff():
     assert "+div.fixture-table-scroll {" in diff
     assert "+  max-width: 100%;" in diff
     assert "+  overflow-x: auto;" in diff
+    # Confirms it is a valid patch against existing content and not a new-file diff
+    assert "@@ -0,0" not in diff
+    assert "fixture-data-table" in diff
+
+
+def test_generate_repair_diff_new_file_fallback(tmp_path):
+    """Verify fallback diff format when target file does not exist on disk."""
+    proposal = {
+        "code": ".new-rule { display: block; }"
+    }
+    code, diff = generate_repair_diff(proposal, "nonexistent.css", root_dir=tmp_path)
+    assert "--- a/nonexistent.css" in diff
+    assert "+++ b/nonexistent.css" in diff
+    assert "@@ -0,0 +1,1 @@" in diff
+    assert "+.new-rule { display: block; }" in diff
 
 
 def test_preview_draft_pr_structure(sample_jobs_store):
