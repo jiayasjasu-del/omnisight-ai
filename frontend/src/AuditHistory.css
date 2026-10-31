@@ -1,0 +1,532 @@
+/* ═══════════════════════════════════════════════════════
+   OmniSight – Audit History & Comparison
+   ═══════════════════════════════════════════════════════ */
+
+.history-content {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+/* ── Page intro ────────────────────────────────────── */
+.history-intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.history-intro h1 {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text);
+}
+
+.history-intro .page-description {
+  color: var(--text-muted);
+  margin-top: 0.25rem;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  background: rgba(99, 102, 241, 0.08);
+  transition: background 0.2s;
+}
+
+.back-link:hover {
+  background: rgba(99, 102, 241, 0.18);
+}
+
+/* ── Empty state ───────────────────────────────────── */
+.history-empty {
+  text-align: center;
+  padding: 4rem 2rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.history-empty .empty-icon {
+  font-size: 2.5rem;
+  display: block;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.history-empty strong {
+  display: block;
+  font-size: 1.1rem;
+  margin-bottom: 0.4rem;
+}
+
+.history-empty p {
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.history-empty .run-audit-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 1.25rem;
+  padding: 0.5rem 1.2rem;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: opacity 0.2s;
+}
+
+.history-empty .run-audit-link:hover {
+  opacity: 0.85;
+}
+
+/* ── Compare toolbar ───────────────────────────────── */
+.compare-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  margin-bottom: 1.5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.compare-toolbar .compare-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.compare-toolbar .compare-label strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.compare-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.compare-btn {
+  padding: 0.4rem 1rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.compare-btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.compare-btn-primary:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.compare-btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.compare-btn-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.compare-btn-secondary:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ── Job timeline ──────────────────────────────────── */
+.job-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.job-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.9rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+}
+
+.job-row:hover {
+  border-color: rgba(99, 102, 241, 0.35);
+  box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.1);
+}
+
+.job-row.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.18);
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.job-row-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.job-row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.job-row-url {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.job-row-time {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.job-row-tags {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.job-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 6px;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tag-findings-0 {
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+}
+
+.tag-findings-n {
+  background: rgba(251, 191, 36, 0.12);
+  color: #fbbf24;
+}
+
+.tag-ai {
+  background: rgba(139, 92, 246, 0.12);
+  color: #a78bfa;
+}
+
+.tag-status-completed {
+  background: rgba(16, 185, 129, 0.1);
+  color: #34d399;
+}
+
+.tag-status-failed {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+
+.tag-status-running, .tag-status-queued {
+  background: rgba(99, 102, 241, 0.12);
+  color: #818cf8;
+}
+
+.job-row-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.job-action-btn {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.job-action-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgba(99, 102, 241, 0.08);
+}
+
+/* ── Comparison result panel ───────────────────────── */
+.comparison-panel {
+  margin-top: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  overflow: hidden;
+  animation: fadeSlideUp 0.35s ease-out;
+}
+
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.comparison-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.comparison-header h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.comparison-header .comp-icon {
+  color: var(--accent);
+  font-size: 1.2rem;
+}
+
+.comparison-summary {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.comparison-body {
+  padding: 1.5rem;
+}
+
+/* Stats row */
+.comp-stats-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.comp-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.9rem 0.5rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.comp-stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 0.25rem;
+}
+
+.comp-stat-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stat-resolved { color: #34d399; }
+.stat-introduced { color: #ef4444; }
+.stat-unchanged { color: #94a3b8; }
+.stat-total { color: var(--accent); }
+
+/* Finding delta list */
+.delta-section {
+  margin-bottom: 1.25rem;
+}
+
+.delta-section-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.delta-resolved .delta-section-title { color: #34d399; }
+.delta-introduced .delta-section-title { color: #ef4444; }
+.delta-unchanged .delta-section-title { color: #94a3b8; }
+
+.delta-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.delta-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 1rem;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.82rem;
+}
+
+.delta-badge {
+  display: inline-flex;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  border-radius: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.badge-resolved {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+}
+
+.badge-introduced {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.badge-unchanged {
+  background: rgba(148, 163, 184, 0.12);
+  color: #94a3b8;
+}
+
+.delta-code {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.delta-viewport {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 0.15rem 0.5rem;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* Screenshots side-by-side */
+.comp-screenshots {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.comp-screenshot-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.comp-screenshot-card h4 {
+  padding: 0.6rem 1rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.comp-screenshot-card img {
+  width: 100%;
+  display: block;
+}
+
+/* ── Loading state ─────────────────────────────────── */
+.history-loading {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.history-loading .loading-dots::after {
+  content: '';
+  animation: dots 1.5s steps(4) infinite;
+}
+
+@keyframes dots {
+  0% { content: ''; }
+  25% { content: '.'; }
+  50% { content: '..'; }
+  75% { content: '...'; }
+}
+
+/* ── Responsive ────────────────────────────────────── */
+@media (max-width: 768px) {
+  .job-row {
+    grid-template-columns: auto 1fr;
+    gap: 0.6rem;
+  }
+
+  .job-row-tags, .job-row-actions {
+    grid-column: 1 / -1;
+  }
+
+  .comp-stats-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .comp-screenshots {
+    grid-template-columns: 1fr;
+  }
+
+  .compare-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .history-intro {
+    flex-direction: column;
+  }
+}
