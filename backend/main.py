@@ -1,10 +1,11 @@
-"""FastAPI application for OmniSight backend."""
-
+import hashlib
+import re
 import shutil
 import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import BackgroundTasks, FastAPI, HTTPException, status
 from fastapi.responses import FileResponse
@@ -114,19 +115,61 @@ def _execute_browser_job(job_id: str, storefront_url: str) -> None:
                 _jobs_store[job_id]["error"] = str(exc)
 
 
+def _slugify_url(url_str: str) -> str:
+    """Create a collision-safe, filesystem-friendly directory name for an audited URL."""
+    parsed = urlparse(url_str)
+    # Strip scheme and port, sanitize path
+    host = (parsed.hostname or "local").replace(":", "_")
+    path_part = parsed.path.strip("/").replace("/", "_") or "root"
+    # Append short sha256 to guarantee collision-free uniqueness across query params or similar paths
+    url_hash = hashlib.sha256(url_str.strip().encode("utf-8")).hexdigest()[:8]
+    slug = f"{host}_{path_part}_{url_hash}"
+    # Keep only safe alphanumeric, dashes, and underscores
+    return re.sub(r"[^a-zA-Z0-9_\-]", "_", slug)
+
+
 def _execute_ui_audit_job(job_id: str, page_url: str) -> None:
     """Run the general-purpose UI audit without OmniStore-specific interactions."""
     with _jobs_lock:
         if job_id in _jobs_store:
             _jobs_store[job_id]["status"] = "running"
 
+    job_output_dir = ARTIFACTS_DIR / "jobs" / job_id
     try:
         result = run_ui_audit(
             storefront_url=page_url,
-            output_dir=ARTIFACTS_DIR / "jobs" / job_id,
+            output_dir=job_output_dir,
         )
+        screenshot_paths = dict(result.get("screenshots", {}))
+
+        # Perform visual baseline comparison per viewport using collision-safe URL slug
+        url_slug = _slugify_url(page_url)
+        url_baseline_dir = BASELINES_DIR / url_slug
+        visual_comparison: dict[str, dict] = {}
+
+        for viewport_name in ("desktop", "mobile"):
+            screenshot_key = f"audit_{viewport_name}"
+            current_screenshot = screenshot_paths.get(screenshot_key)
+            if not current_screenshot:
+                continue
+
+            current_file = Path(current_screenshot)
+            if not current_file.is_file():
+                continue
+
+            baseline_path = url_baseline_dir / f"audit-{viewport_name}.png"
+            diff_path = job_output_dir / f"audit-diff-{viewport_name}.png"
+
+            with _visual_lock:
+                comp_result = compare_or_create_baseline(
+                    current_file, baseline_path, diff_path
+                )
+            visual_comparison[viewport_name] = comp_result
+            if comp_result.get("diff_path"):
+                screenshot_paths[f"diff_{viewport_name}"] = comp_result["diff_path"]
+
         ai_analysis = analyze_ui_audit(
-            result.get("screenshots", {}),
+            screenshot_paths,
             result.get("findings", []),
         )
         now = datetime.now(timezone.utc).isoformat()
@@ -134,7 +177,8 @@ def _execute_ui_audit_job(job_id: str, page_url: str) -> None:
             if job_id in _jobs_store:
                 _jobs_store[job_id]["status"] = "completed"
                 _jobs_store[job_id]["completed_at"] = now
-                _jobs_store[job_id]["artifacts"] = result.get("screenshots", {})
+                _jobs_store[job_id]["artifacts"] = screenshot_paths
+                _jobs_store[job_id]["visual_comparison"] = visual_comparison
                 _jobs_store[job_id]["findings"] = result.get("findings", [])
                 _jobs_store[job_id]["ai_analysis"] = ai_analysis
     except Exception as exc:
@@ -258,15 +302,19 @@ def get_job_status(job_id: str) -> JobResponse:
 
 @app.get("/jobs/{job_id}/screenshots/{viewport}", tags=["Jobs"])
 def get_audit_screenshot(job_id: str, viewport: str) -> FileResponse:
-    """Serve a screenshot produced by a completed UI audit job."""
-    if viewport not in {"desktop", "mobile"}:
+    """Serve a screenshot or visual diff produced by a completed UI audit or build job."""
+    is_diff = viewport.startswith("diff-")
+    base_viewport = viewport[5:] if is_diff else viewport
+    if base_viewport not in {"desktop", "mobile"}:
         raise HTTPException(status_code=404, detail="Screenshot not found")
 
     with _jobs_lock:
         job = _jobs_store.get(job_id)
-        screenshot_path = (
-            job.get("artifacts", {}).get(f"audit_{viewport}") if job else None
-        )
+        artifacts = job.get("artifacts", {}) if job else {}
+        if is_diff:
+            screenshot_path = artifacts.get(f"diff_{base_viewport}") or artifacts.get(f"visual_diff_{base_viewport}")
+        else:
+            screenshot_path = artifacts.get(f"audit_{base_viewport}") or artifacts.get(base_viewport)
 
     if not screenshot_path:
         raise HTTPException(status_code=404, detail="Screenshot not found")

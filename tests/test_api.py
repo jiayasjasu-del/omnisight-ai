@@ -250,3 +250,80 @@ def test_webhook_audit_lifecycle_mocked(client, monkeypatch):
     assert job_data["ai_analysis"]["status"] == "completed"
     assert job_data["ai_analysis"]["summary"] == "Mocked AI visual summary."
     assert len(job_data["ai_analysis"]["issues"]) == 1
+
+
+def test_audit_visual_comparison_baseline_and_diff(client, tmp_path, monkeypatch):
+    """POST /webhooks/audit creates baseline on first run and detects diff on subsequent run."""
+    import time
+    from PIL import Image
+    from backend import main as main_module
+
+    # Create two temporary test images with slight differences
+    img1_path = tmp_path / "img1.png"
+    img2_path = tmp_path / "img2.png"
+
+    Image.new("RGB", (100, 100), "white").save(img1_path)
+    # img2 has a red patch
+    img2 = Image.new("RGB", (100, 100), "white")
+    for x in range(30, 70):
+        for y in range(30, 70):
+            img2.putpixel((x, y), (255, 0, 0))
+    img2.save(img2_path)
+
+    current_img = {"path": str(img1_path)}
+
+    def mock_run_ui_audit(storefront_url, output_dir):
+        return {
+            "screenshots": {
+                "audit_desktop": current_img["path"],
+                "audit_mobile": current_img["path"],
+            },
+            "findings": [],
+        }
+
+    monkeypatch.setattr(main_module, "run_ui_audit", mock_run_ui_audit)
+    monkeypatch.setattr(main_module, "analyze_ui_audit", lambda screenshots, findings: {"status": "not_configured"})
+    monkeypatch.setattr(main_module, "BASELINES_DIR", tmp_path / "baselines")
+
+    target_url = "http://127.0.0.1:5173/test-visual-page"
+
+    # Run 1: Should create baseline
+    res1 = client.post("/webhooks/audit", json={"storefront_url": target_url})
+    assert res1.status_code == 202
+    job_id_1 = res1.json()["job_id"]
+
+    for _ in range(20):
+        data1 = client.get(f"/jobs/{job_id_1}").json()
+        if data1["status"] in ("completed", "failed"):
+            break
+        time.sleep(0.1)
+
+    assert data1["status"] == "completed"
+    assert "desktop" in data1["visual_comparison"]
+    assert data1["visual_comparison"]["desktop"]["status"] == "baseline_created"
+    assert data1["visual_comparison"]["desktop"]["assessment"] == "baseline_created"
+
+    # Run 2: Switch to img2 (with changes) -> should detect diff and create diff image
+    current_img["path"] = str(img2_path)
+    res2 = client.post("/webhooks/audit", json={"storefront_url": target_url})
+    assert res2.status_code == 202
+    job_id_2 = res2.json()["job_id"]
+
+    for _ in range(20):
+        data2 = client.get(f"/jobs/{job_id_2}").json()
+        if data2["status"] in ("completed", "failed"):
+            break
+        time.sleep(0.1)
+
+    assert data2["status"] == "completed"
+    assert "desktop" in data2["visual_comparison"]
+    assert data2["visual_comparison"]["desktop"]["status"] == "compared"
+    assert data2["visual_comparison"]["desktop"]["assessment"] == "review_required"
+    assert data2["visual_comparison"]["desktop"]["changed_percentage"] > 0
+    assert "diff_desktop" in data2["artifacts"]
+
+    # Verify screenshot endpoint serves the diff image
+    diff_res = client.get(f"/jobs/{job_id_2}/screenshots/diff-desktop")
+    assert diff_res.status_code == 200
+    assert diff_res.headers["content-type"] == "image/png"
+

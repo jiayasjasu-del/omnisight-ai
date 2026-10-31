@@ -21,7 +21,12 @@ function StatusPill({ status }) {
   return <span className={`audit-status audit-status-${status || 'idle'}`}><i />{label}</span>
 }
 
-function ScreenshotCard({ jobId, viewport, title, description }) {
+function ScreenshotCard({ jobId, viewport, title, description, visualComparison }) {
+  const comp = visualComparison?.[viewport]
+  const hasDiff = Boolean(comp?.diff_path)
+  const assessment = comp?.assessment
+  const changedPct = comp?.changed_percentage
+
   return (
     <article className="screenshot-card">
       <div className="screenshot-heading">
@@ -29,13 +34,31 @@ function ScreenshotCard({ jobId, viewport, title, description }) {
           <h3>{title}</h3>
           <p>{description}</p>
         </div>
-        <a href={`${API}/jobs/${jobId}/screenshots/${viewport}`} target="_blank" rel="noreferrer" aria-label={`Open ${title} screenshot in a new tab`}>
-          Open image ↗
-        </a>
+        <div className="screenshot-actions">
+          {hasDiff && (
+            <a href={`${API}/jobs/${jobId}/screenshots/diff-${viewport}`} target="_blank" rel="noreferrer" className="diff-link" aria-label={`Open ${title} visual diff in a new tab`}>
+              Diff image ({changedPct}%) ↗
+            </a>
+          )}
+          <a href={`${API}/jobs/${jobId}/screenshots/${viewport}`} target="_blank" rel="noreferrer" aria-label={`Open ${title} screenshot in a new tab`}>
+            Open image ↗
+          </a>
+        </div>
       </div>
       <a className="screenshot-preview" href={`${API}/jobs/${jobId}/screenshots/${viewport}`} target="_blank" rel="noreferrer">
         <img src={`${API}/jobs/${jobId}/screenshots/${viewport}`} alt={`${title} screenshot of the audited website`} />
       </a>
+      {comp && (
+        <div className="screenshot-comp-footer">
+          <span className={`comp-tag comp-${assessment || 'unknown'}`}>
+            {assessment === 'baseline_created'
+              ? 'Starting baseline created'
+              : assessment === 'review_required'
+                ? `Visual diff: ${changedPct}% change (review required)`
+                : `Visual diff: ${changedPct}% (within threshold)`}
+          </span>
+        </div>
+      )}
     </article>
   )
 }
@@ -55,9 +78,23 @@ function downloadAuditReport(report) {
     `- [Desktop screenshot](${window.location.origin}${API}/jobs/${report.job_id}/screenshots/desktop)`,
     `- [Mobile screenshot](${window.location.origin}${API}/jobs/${report.job_id}/screenshots/mobile)`,
     '',
-    '## Findings',
-    '',
   ]
+
+  if (report.visual_comparison && Object.keys(report.visual_comparison).length > 0) {
+    lines.push('## Visual baseline comparison', '')
+    for (const [vp, comp] of Object.entries(report.visual_comparison)) {
+      const label = vp.charAt(0).toUpperCase() + vp.slice(1)
+      if (comp.assessment === 'baseline_created') {
+        lines.push(`- **${label}:** Starting baseline created`)
+      } else {
+        const diffLink = comp.diff_path ? ` ([view diff image](${window.location.origin}${API}/jobs/${report.job_id}/screenshots/diff-${vp}))` : ''
+        lines.push(`- **${label}:** ${comp.changed_percentage}% pixel difference — assessment: \`${comp.assessment}\`${diffLink}`)
+      }
+    }
+    lines.push('')
+  }
+
+  lines.push('## Findings', '')
 
   if (findings.length === 0) {
     lines.push('No issues were detected by the current rule-based checks.', '')
@@ -395,8 +432,8 @@ export default function AuditDashboard() {
 
               <div className="section-heading"><div><h2>Screen captures</h2><p>Compare how the page appears at each viewport.</p></div><span className="job-chip">Job {report.job_id.slice(0, 8)}</span></div>
               <div className="screenshot-grid">
-                <ScreenshotCard jobId={report.job_id} viewport="desktop" title="Desktop" description="1440 × 1000 viewport" />
-                <ScreenshotCard jobId={report.job_id} viewport="mobile" title="Mobile" description="390 × 844 viewport" />
+                <ScreenshotCard jobId={report.job_id} viewport="desktop" title="Desktop" description="1440 × 1000 viewport" visualComparison={report.visual_comparison} />
+                <ScreenshotCard jobId={report.job_id} viewport="mobile" title="Mobile" description="390 × 844 viewport" visualComparison={report.visual_comparison} />
               </div>
 
               <section className="findings-card">
