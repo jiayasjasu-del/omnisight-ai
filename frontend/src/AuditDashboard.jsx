@@ -145,6 +145,7 @@ export default function AuditDashboard() {
   const [report, setReport] = useState(null)
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [repairPreview, setRepairPreview] = useState({ findingIndex: null, loading: false, result: null, error: '' })
   const [prReview, setPrReview] = useState({
     open: false,
     findingIndex: null,
@@ -193,6 +194,26 @@ export default function AuditDashboard() {
         loading: false,
         error: err.message || 'Could not load PR preview.',
       }))
+    }
+  }
+
+  async function previewRepairInBrowser(findingIndex) {
+    if (!report?.job_id) return
+    setRepairPreview({ findingIndex, loading: true, result: null, error: '' })
+    try {
+      const result = await readJson(await fetch(`${API}/repairs/preview-fix`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: report.job_id, finding_index: findingIndex }),
+      }))
+      setRepairPreview({ findingIndex, loading: false, result, error: '' })
+    } catch (previewError) {
+      setRepairPreview({
+        findingIndex,
+        loading: false,
+        result: null,
+        error: previewError.message || 'Could not verify the repair in an isolated browser.',
+      })
     }
   }
 
@@ -265,6 +286,7 @@ export default function AuditDashboard() {
     setError('')
     setReport(null)
     setJob(null)
+    setRepairPreview({ findingIndex: null, loading: false, result: null, error: '' })
 
     try {
       const queued = await readJson(await fetch(`${API}/webhooks/audit`, {
@@ -379,7 +401,7 @@ export default function AuditDashboard() {
 
               <section className="findings-card">
                 <div className="section-heading"><div><h2>Deterministic findings</h2><p>Rule-based browser checks (DOM measurements, overflow, images, accessibility labels).</p></div><span className={`finding-count ${findings.length ? 'has-findings' : ''}`}>{findings.length} found</span></div>
-                {findings.length === 0 ? <div className="empty-findings"><span>✓</span><div><strong>All checked items look good</strong><p>No overflow, image-loading, or basic labeling issues were detected in this run.</p></div></div> : <div className="finding-list">{findings.map((finding, index) => <article className="finding-item" key={`${finding.code || 'finding'}-${index}`}><span className="finding-number">{String(index + 1).padStart(2, '0')}</span><div><h3>{finding.title || finding.code || 'UI finding'}</h3><p>{finding.evidence || finding.message || 'The browser reported an item to review.'}</p>{finding.affected_elements?.length > 0 && <div className="affected-elements"><strong>Elements to inspect</strong>{finding.affected_elements.map((element, elementIndex) => <code key={`${element.selector}-${elementIndex}`}>{element.selector} · {element.width}{element.overflowBy !== '0px' ? ` · ${element.overflowBy} wider than container` : ''}</code>)}</div>}{finding.suggestion && <small>Suggested fix: {finding.suggestion}</small>}{finding.repair_proposal && <div className="repair-proposal"><strong>{finding.repair_proposal.title}</strong><p>{finding.repair_proposal.explanation}</p><pre><code>{finding.repair_proposal.code}</code></pre><div className="proposal-actions"><button type="button" className="prepare-pr-button" onClick={() => openPrReview(index)}><span>✦</span> Review & Prepare Draft PR ↗</button></div></div>}</div><span className="viewport-tag">{finding.viewport || 'Page'}</span></article>)}</div>}
+                {findings.length === 0 ? <div className="empty-findings"><span>✓</span><div><strong>All checked items look good</strong><p>No overflow, image-loading, or basic labeling issues were detected in this run.</p></div></div> : <div className="finding-list">{findings.map((finding, index) => <article className="finding-item" key={`${finding.code || 'finding'}-${index}`}><span className="finding-number">{String(index + 1).padStart(2, '0')}</span><div><h3>{finding.title || finding.code || 'UI finding'}</h3><p>{finding.evidence || finding.message || 'The browser reported an item to review.'}</p>{finding.affected_elements?.length > 0 && <div className="affected-elements"><strong>Elements to inspect</strong>{finding.affected_elements.map((element, elementIndex) => <code key={`${element.selector}-${elementIndex}`}>{element.selector} · {element.width}{element.overflowBy !== '0px' ? ` · ${element.overflowBy} wider than container` : ''}</code>)}</div>}{finding.suggestion && <small>Suggested fix: {finding.suggestion}</small>}{finding.repair_proposal && <div className="repair-proposal"><strong>{finding.repair_proposal.title}</strong><p>{finding.repair_proposal.explanation}</p><pre><code>{finding.repair_proposal.code}</code></pre><div className="proposal-actions"><button type="button" className="prepare-pr-button" onClick={() => previewRepairInBrowser(index)} disabled={repairPreview.loading}><span>✓</span> {repairPreview.loading && repairPreview.findingIndex === index ? 'Checking repair…' : 'Try fix in isolated browser'}</button><button type="button" className="prepare-pr-button" onClick={() => openPrReview(index)}><span>✦</span> Review & Prepare Draft PR ↗</button></div>{repairPreview.findingIndex === index && repairPreview.error && <div className="repair-preview-error" role="alert">{repairPreview.error}</div>}{repairPreview.findingIndex === index && repairPreview.result && <div className={`repair-preview-result repair-preview-${repairPreview.result.status}`}><strong>{repairPreview.result.status === 'verified' ? 'Repair verified in isolated browser' : repairPreview.result.status === 'not_reproduced' ? 'Issue not reproduced in the preview' : 'The issue remains after the preview'}</strong><p>{repairPreview.result.message} Original audit results and website files were not changed.</p><div className="repair-preview-images">{Object.keys(repairPreview.result.before_screenshots).map(viewport => <a key={`before-${viewport}`} href={`${API}/jobs/${report.job_id}/repair-preview-before/${viewport}`} target="_blank" rel="noreferrer">Open {viewport} before screenshot ↗</a>)}{Object.keys(repairPreview.result.screenshots).map(viewport => <a key={`after-${viewport}`} href={`${API}/jobs/${report.job_id}/repair-preview/${viewport}`} target="_blank" rel="noreferrer">Open {viewport} after screenshot ↗</a>)}</div></div>}</div>}</div><span className="viewport-tag">{finding.viewport || 'Page'}</span></article>)}</div>}
               </section>
 
               <section className="ai-analysis-card">

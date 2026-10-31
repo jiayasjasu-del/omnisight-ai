@@ -169,6 +169,28 @@ class PreviewPRResponse(BaseModel):
     repair_proposal: dict[str, Any] | None = None
 
 
+class RepairPreviewRequest(BaseModel):
+    """Select an existing audit finding for a disposable browser repair preview."""
+
+    job_id: str
+    finding_index: int = 0
+
+
+class RepairPreviewResponse(BaseModel):
+    """Before/after browser audit results for a CSS repair preview."""
+
+    status: str = Field(..., description="verified | not_resolved | not_reproduced")
+    message: str
+    job_id: str
+    finding_code: str
+    viewport: str
+    css: str
+    findings_before: list[dict[str, Any]] = Field(default_factory=list)
+    findings_after: list[dict[str, Any]] = Field(default_factory=list)
+    before_screenshots: dict[str, str] = Field(default_factory=dict)
+    screenshots: dict[str, str] = Field(default_factory=dict)
+
+
 class CreatePRRequest(BaseModel):
     """Request to create a draft PR, requiring explicit reviewer approval."""
 

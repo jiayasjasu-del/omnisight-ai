@@ -10,7 +10,7 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, status
 from fastapi.responses import FileResponse
 
 from backend.ai_analyzer import analyze_ui_audit
-from backend.browser_runner import run_playwright_flow, run_ui_audit
+from backend.browser_runner import run_playwright_flow, run_repair_preview, run_ui_audit
 from backend.github_service import create_draft_pr, get_github_config, preview_draft_pr
 from backend.models import (
     BuildWebhookPayload,
@@ -27,6 +27,9 @@ from backend.models import (
     JobSummary,
     PreviewPRRequest,
     PreviewPRResponse,
+    RepairPreviewRequest,
+    RepairPreviewResponse,
+    is_local_url,
 )
 from backend.visual_diff import compare_or_create_baseline
 
@@ -276,6 +279,52 @@ def get_audit_screenshot(job_id: str, viewport: str) -> FileResponse:
     return FileResponse(file_path, media_type="image/png")
 
 
+@app.get("/jobs/{job_id}/repair-preview/{viewport}", tags=["Jobs"])
+def get_repair_preview_screenshot(job_id: str, viewport: str) -> FileResponse:
+    """Serve a screenshot from a temporary, isolated CSS repair preview."""
+    if viewport not in {"desktop", "mobile"}:
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+
+    with _jobs_lock:
+        job = _jobs_store.get(job_id)
+        screenshot_path = (
+            job.get("repair_preview_screenshots", {}).get(viewport) if job else None
+        )
+
+    if not screenshot_path:
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+
+    file_path = Path(screenshot_path).resolve()
+    job_artifacts_dir = (ARTIFACTS_DIR / "jobs" / job_id).resolve()
+    if job_artifacts_dir not in file_path.parents or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+
+    return FileResponse(file_path, media_type="image/png")
+
+
+@app.get("/jobs/{job_id}/repair-preview-before/{viewport}", tags=["Jobs"])
+def get_repair_preview_before_screenshot(job_id: str, viewport: str) -> FileResponse:
+    """Serve the pre-repair screenshot captured in the disposable browser preview."""
+    if viewport not in {"desktop", "mobile"}:
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+
+    with _jobs_lock:
+        job = _jobs_store.get(job_id)
+        screenshot_path = (
+            job.get("repair_preview_before_screenshots", {}).get(viewport) if job else None
+        )
+
+    if not screenshot_path:
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+
+    file_path = Path(screenshot_path).resolve()
+    job_artifacts_dir = (ARTIFACTS_DIR / "jobs" / job_id).resolve()
+    if job_artifacts_dir not in file_path.parents or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+
+    return FileResponse(file_path, media_type="image/png")
+
+
 def _make_job_summary(job: dict) -> dict:
     """Convert an internal job dict to a JobSummary-compatible dict."""
     findings = job.get("findings", [])
@@ -406,6 +455,94 @@ def preview_repair_pull_request(payload: PreviewPRRequest) -> PreviewPRResponse:
         return PreviewPRResponse(**preview)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post(
+    "/repairs/preview-fix",
+    response_model=RepairPreviewResponse,
+    tags=["Repairs"],
+)
+def preview_repair_in_isolated_browser(
+    payload: RepairPreviewRequest,
+) -> RepairPreviewResponse:
+    """Try a generated repair in disposable Playwright pages and run browser checks again.
+
+    The CSS is injected only into temporary browser pages; the target website's source
+    files and the original audit job findings are not modified.
+    """
+    with _jobs_lock:
+        job = _jobs_store.get(payload.job_id)
+        job_copy = dict(job) if job else None
+
+    if not job_copy:
+        raise HTTPException(status_code=404, detail=f"Job '{payload.job_id}' not found")
+    if job_copy.get("status") != "completed":
+        raise HTTPException(status_code=409, detail="Wait for the audit job to complete first.")
+
+    findings = job_copy.get("findings", [])
+    if payload.finding_index < 0 or payload.finding_index >= len(findings):
+        raise HTTPException(status_code=400, detail="The selected finding does not exist.")
+
+    finding = findings[payload.finding_index]
+    proposal = finding.get("repair_proposal")
+    if finding.get("code") != "horizontal_overflow" or not proposal:
+        raise HTTPException(
+            status_code=400,
+            detail="The selected finding has no supported table-overflow repair proposal.",
+        )
+    if not is_local_url(job_copy.get("storefront_url", "")):
+        raise HTTPException(status_code=400, detail="Repair previews are restricted to local URLs.")
+
+    try:
+        result = run_repair_preview(
+            storefront_url=job_copy["storefront_url"],
+            proposal=proposal,
+            output_dir=ARTIFACTS_DIR / "jobs" / payload.job_id / "repair-preview",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Could not complete isolated repair preview: {exc}")
+
+    target_viewport = finding.get("viewport", "mobile")
+    before_detected = any(
+        item.get("code") == finding.get("code")
+        and item.get("viewport") == target_viewport
+        for item in result["findings_before"]
+    )
+    unresolved = any(
+        item.get("code") == finding.get("code")
+        and item.get("viewport") == target_viewport
+        for item in result["findings_after"]
+    )
+    preview_status = (
+        "not_reproduced" if not before_detected else "not_resolved" if unresolved else "verified"
+    )
+    response = RepairPreviewResponse(
+        status=preview_status,
+        message=(
+            "The selected finding could not be reproduced before applying the CSS. No repair success is claimed."
+            if preview_status == "not_reproduced"
+            else "The same overflow finding remains after applying the CSS in the isolated browser."
+            if unresolved
+            else "The selected overflow finding was not detected after applying the CSS in the isolated browser."
+        ),
+        job_id=payload.job_id,
+        finding_code=finding.get("code", "horizontal_overflow"),
+        viewport=target_viewport,
+        css=result["css"],
+        findings_before=result["findings_before"],
+        findings_after=result["findings_after"],
+        before_screenshots=result["before_screenshots"],
+        screenshots=result["screenshots"],
+    )
+
+    with _jobs_lock:
+        if payload.job_id in _jobs_store:
+            _jobs_store[payload.job_id]["repair_preview_before_screenshots"] = result["before_screenshots"]
+            _jobs_store[payload.job_id]["repair_preview_screenshots"] = result["screenshots"]
+
+    return response
 
 
 @app.post("/repairs/create-pr", response_model=CreatePRResponse, tags=["Repairs"])

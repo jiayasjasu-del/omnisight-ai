@@ -10,13 +10,13 @@ This guide provides a structured, 5-minute walkthrough script and technical runb
 OmniSight is a **UI audit and human-reviewed repair workflow prototype** designed to bridge automated browser testing with human inspection and reviewable repair suggestions. It does not automatically heal, edit, or modify the audited target website. It automates:
 - **Responsive capture**: Headless Playwright capture across standard desktop (1440×1000) and mobile (390×844) viewports.
 - **Deterministic DOM audit**: Rule-based detection of horizontal overflow, broken images, unlabelled form controls, unnamed buttons, and console errors.
-- **Review-only repair proposals**: Generating targeted CSS suggestions (e.g., container scroll wrappers for overflowing wide tables) without editing target files.
+- **Repair suggestions and isolated verification**: Generating targeted CSS suggestions and trying the supported table fix in disposable Playwright pages, without editing target files.
 - **Visual regression tracking**: Side-by-side run comparisons classifying findings into resolved, introduced, and unchanged deltas.
 - **Optional AI visual analysis**: Inspecting screenshots via vision models for visual clipping and low contrast when configured.
 - **Human-approved draft PR workflow**: Presenting reviewers with exact unified diffs and branch targets, strictly creating draft pull requests only after explicit reviewer approval.
 
 ### Honest Limitations
-- **Prototype scope**: OmniSight is an internship prototype for responsive auditing and human-in-the-loop repair workflows; it never automatically heals, applies code to, or mutates the audited site.
+- **Prototype scope**: OmniSight is an internship prototype for responsive auditing and human-reviewed repair workflows. Its supported CSS preview runs only in disposable browser pages; it does not change the audited site's source files or persistent state.
 - **Local-first focus**: Optimized for local development servers (`127.0.0.1` / `localhost`), not public cloud web crawling.
 - **Zero-call default for AI**: When `OPENAI_API_KEY` is not provided, AI analysis reports `not_configured`. The deterministic audit and browser checks run 100% locally with zero external network dependencies.
 - **Draft-only PRs & token requirement**: Without `GITHUB_TOKEN` set on the backend, reviewers can open and inspect the full diff preview, but cannot create a draft PR (the create button is safely disabled and the server reports `not_configured`). When configured, PRs are strictly created as GitHub **Drafts** (`draft: true`). The demo must stop at the preview and must not submit a PR.
@@ -84,6 +84,7 @@ npm run dev -- --host 127.0.0.1
      }
      ```
    - Mention: *"OmniSight does not automatically edit user code. The proposal is review-only."*
+   - Click **Try fix in isolated browser**. Show the verification result and preview screenshot; the original audit and target files remain unchanged.
 
 ---
 
@@ -95,6 +96,7 @@ npm run dev -- --host 127.0.0.1
    - **Status**: `Audit passed — 0 findings detected`.
    - **Mobile screenshot**: The table now scrolls cleanly within its card without overflowing the page width.
 4. Optional: Click **"Download Markdown report"** to show the generated audit report with job metadata, evidence, and screenshot links.
+   - The isolated repair preview above is a separate demonstration; it does not create another audit-history job.
 
 ---
 

@@ -66,7 +66,17 @@
 .ai-error-detail code{color:#b91c1c;background:#fee2e2}
 
 /* Human-approved GitHub Draft PR review styles */
-.proposal-actions{margin-top:11px;display:flex}
+.proposal-actions{margin-top:11px;display:flex;flex-wrap:wrap;gap:8px}
+.prepare-pr-button:disabled{opacity:.6;cursor:wait}
+.repair-preview-result,.repair-preview-error{margin-top:11px;padding:10px 12px;border:1px solid #cde9dd;border-radius:7px;background:#f3fbf7;color:#22644f;font-size:9px;line-height:1.5}
+.repair-preview-result strong,.repair-preview-error strong{display:block;font-size:10px}
+.repair-preview-result p{margin:4px 0;color:#55796d}
+.repair-preview-not_resolved,.repair-preview-not_reproduced{border-color:#f0d8b8;background:#fff9f0;color:#8d5c18}
+.repair-preview-not_resolved p,.repair-preview-not_reproduced p{color:#8e744e}
+.repair-preview-error{border-color:#fecaca;background:#fff7f7;color:#a33d3d}
+.repair-preview-images{display:flex;flex-wrap:wrap;gap:8px;margin-top:7px}
+.repair-preview-images a{color:#087eb9;text-decoration:none;font-weight:650}
+.repair-preview-images a:hover{text-decoration:underline}
 .prepare-pr-button{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border:1px solid #1a2a40;border-radius:6px;background:#14243a;color:#fff;font:inherit;font-size:9px;font-weight:700;cursor:pointer;transition:background .15s}
 .prepare-pr-button:hover{background:#1f3757}
 .prepare-pr-button span{color:#93c5fd}

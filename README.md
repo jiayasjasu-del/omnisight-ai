@@ -24,9 +24,10 @@ Implemented:
 - Dashboard shortcuts to quickly populate either route ("Use broken sample" and "Use repaired sample") for immediate before/after comparison
 - Audit history view at `/audit/history` with side-by-side delta comparisons (resolved, introduced, unchanged findings)
 - Human-approved GitHub draft PR preparation workflow with exact unified diff inspection and server-side token safety
+- Isolated repair preview: applies the supported table-overflow CSS only in disposable Playwright pages, reruns the audit, and captures before/after screenshots without editing the audited site
 - **5-Minute Presentation Guide**: See [DEMO.md](DEMO.md) for the walkthrough script covering the UI audit and human-reviewed repair prototype, diff preview, and port recovery steps
 
-Optional screenshot-based AI explanations are implemented but require an `OPENAI_API_KEY`; the backend does not automatically edit target websites. The OmniStore shopping flow remains a sample target used to exercise automation.
+Optional screenshot-based AI explanations are implemented but require an `OPENAI_API_KEY`. A supported CSS proposal can be tried in a disposable browser page and re-audited; this does not modify the audited site's source files. The OmniStore shopping flow remains a sample target used to exercise automation.
 
 ### Week 4 progress update — October 26–27, 2026
 
@@ -149,6 +150,12 @@ OmniSight includes a paired test fixture to demonstrate a complete detect → re
    - In the audit dashboard, click **Use repaired sample** (fills `http://127.0.0.1:5173/audit-fixture-fixed`) and click **Run audit**.
    - Result: 0 findings reported. The horizontal overflow issue is resolved.
 
+3. **Try the proposed fix without changing source files**:
+   - After auditing `/audit-fixture`, open its horizontal-overflow finding and click **Try fix in isolated browser**.
+   - The backend validates the generated table-wrapper rule, injects it into disposable desktop and mobile Playwright pages, reruns the deterministic checks, and saves preview screenshots under that job's artifacts.
+   - The dashboard reports whether the same finding disappeared and links the preview screenshots. The original audit result and target site's files are left unchanged.
+   - This preview currently supports only the generated wide-table overflow repair; it does not execute arbitrary model-generated CSS or write changes to the target project.
+
 You can also run both audits directly via PowerShell:
 
 ```powershell
@@ -249,7 +256,7 @@ From the repository root (ensure the storefront is running at `http://127.0.0.1:
 .\.venv\Scripts\python.exe -m pytest tests\test_github_pr.py -v
 ```
 
-To run all 30 automated tests across all test suites:
+To run all 31 automated tests across all test suites:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -v
@@ -303,6 +310,12 @@ Screenshots are written to `artifacts/omnistore-desktop.png` and `artifacts/omni
 - Added audit history view (`frontend/src/AuditHistory.jsx` and `AuditHistory.css`) accessible via `/audit/history` and the dashboard sidebar.
 - Implemented `GET /jobs` and `POST /jobs/compare` backend endpoints for side-by-side run comparisons.
 - Classifies findings between two audit runs into `resolved`, `introduced`, and `unchanged` categories with delta summaries and visual screenshot comparisons.
-- Verified: all 30 automated backend tests pass; frontend build and oxlint linting pass with 0 errors and 0 warnings.
+- Verified: all 31 automated backend tests pass; frontend build and oxlint linting pass with 0 errors and 0 warnings.
+
+### October 30 isolated repair preview milestone
+
+- Added **Try fix in isolated browser** for supported wide-table overflow proposals.
+- The backend injects only a validated `max-width: 100%; overflow-x: auto;` rule in temporary Playwright pages, reruns the browser audit at desktop and mobile sizes, and captures preview screenshots.
+- Original findings and audited source files are not modified. Arbitrary CSS and other repair types are not supported by this preview.
 
 
