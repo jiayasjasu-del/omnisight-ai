@@ -4,7 +4,13 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.main import app, _jobs_store, _jobs_lock
+from backend.main import (
+    _jobs_lock,
+    _jobs_store,
+    _load_persisted_jobs,
+    _save_completed_job,
+    app,
+)
 from backend.models import is_local_url
 
 
@@ -326,4 +332,125 @@ def test_audit_visual_comparison_baseline_and_diff(client, tmp_path, monkeypatch
     diff_res = client.get(f"/jobs/{job_id_2}/screenshots/diff-desktop")
     assert diff_res.status_code == 200
     assert diff_res.headers["content-type"] == "image/png"
+
+
+def test_job_persistence_save_and_reload(tmp_path):
+    """Saving a completed job writes valid JSON, and _load_persisted_jobs restores it."""
+    test_job_id = "test-job-persist-1234"
+    job_payload = {
+        "job_id": test_job_id,
+        "status": "completed",
+        "storefront_url": "http://127.0.0.1:5173/sample",
+        "created_at": "2026-10-31T10:00:00Z",
+        "completed_at": "2026-10-31T10:00:05Z",
+        "artifacts": {"audit_desktop": "C:/fake/desktop.png"},
+        "error": None,
+        "metadata": {"mode": "ui_audit"},
+        "visual_comparison": {"desktop": {"status": "baseline_created"}},
+        "findings": [{"code": "horizontal_overflow", "viewport": "mobile"}],
+        "ai_analysis": {"status": "completed", "summary": "Sample summary"},
+    }
+
+    with _jobs_lock:
+        _jobs_store[test_job_id] = job_payload
+
+    job_dir = tmp_path / "jobs" / test_job_id
+    _save_completed_job(test_job_id, job_dir=job_dir)
+
+    job_file = job_dir / "job.json"
+    assert job_file.is_file()
+
+    # Clear memory store to simulate process restart
+    with _jobs_lock:
+        _jobs_store.clear()
+        assert test_job_id not in _jobs_store
+
+    # Reload from disk
+    loaded_count = _load_persisted_jobs(artifacts_dir=tmp_path)
+    assert loaded_count == 1
+    assert test_job_id in _jobs_store
+    reloaded = _jobs_store[test_job_id]
+    assert reloaded["job_id"] == test_job_id
+    assert reloaded["status"] == "completed"
+    assert reloaded["storefront_url"] == "http://127.0.0.1:5173/sample"
+    assert reloaded["findings"][0]["code"] == "horizontal_overflow"
+    assert reloaded["ai_analysis"]["summary"] == "Sample summary"
+
+
+def test_job_persistence_handles_invalid_and_corrupt_files(tmp_path):
+    """_load_persisted_jobs gracefully skips malformed, incomplete, or corrupted JSON files without crashing."""
+    jobs_dir = tmp_path / "jobs"
+
+    # Valid job
+    valid_id = "valid-job-999"
+    valid_dir = jobs_dir / valid_id
+    valid_dir.mkdir(parents=True)
+    (valid_dir / "job.json").write_text(
+        '{"job_id": "valid-job-999", "status": "completed", "storefront_url": "http://127.0.0.1:5173", "created_at": "2026-10-31T10:00:00Z"}',
+        encoding="utf-8",
+    )
+
+    # Corrupt non-JSON syntax
+    corrupt_dir = jobs_dir / "corrupt-job-1"
+    corrupt_dir.mkdir(parents=True)
+    (corrupt_dir / "job.json").write_text("{this is not valid json!}", encoding="utf-8")
+
+    # Incomplete schema missing required fields
+    incomplete_dir = jobs_dir / "incomplete-job-2"
+    incomplete_dir.mkdir(parents=True)
+    (incomplete_dir / "job.json").write_text('{"job_id": "incomplete-job-2"}', encoding="utf-8")
+
+    # Empty file
+    empty_dir = jobs_dir / "empty-job-3"
+    empty_dir.mkdir(parents=True)
+    (empty_dir / "job.json").write_text("", encoding="utf-8")
+
+    with _jobs_lock:
+        _jobs_store.clear()
+
+    loaded = _load_persisted_jobs(artifacts_dir=tmp_path)
+    assert loaded == 1
+    assert valid_id in _jobs_store
+    assert "corrupt-job-1" not in _jobs_store
+    assert "incomplete-job-2" not in _jobs_store
+
+
+def test_completed_audit_automatically_persists_to_disk(client, tmp_path, monkeypatch):
+    """Running an audit job automatically writes job.json inside artifacts/jobs/{job_id}/."""
+    import time
+    from backend import main as main_module
+
+    monkeypatch.setattr(main_module, "ARTIFACTS_DIR", tmp_path)
+    monkeypatch.setattr(main_module, "BASELINES_DIR", tmp_path / "baselines")
+    monkeypatch.setattr(
+        main_module,
+        "run_ui_audit",
+        lambda storefront_url, output_dir: {
+            "screenshots": {},
+            "findings": [],
+        },
+    )
+    monkeypatch.setattr(main_module, "analyze_ui_audit", lambda screenshots, findings: {"status": "not_configured"})
+
+    res = client.post("/webhooks/audit", json={"storefront_url": "http://127.0.0.1:5173/persist-test"})
+    assert res.status_code == 202
+    job_id = res.json()["job_id"]
+
+    for _ in range(20):
+        data = client.get(f"/jobs/{job_id}").json()
+        if data["status"] in ("completed", "failed"):
+            break
+        time.sleep(0.1)
+
+    assert data["status"] == "completed"
+    persisted_file = tmp_path / "jobs" / job_id / "job.json"
+    assert persisted_file.is_file(), f"Expected {persisted_file} to exist on disk"
+
+    # Verify reload from disk restores it
+    with _jobs_lock:
+        _jobs_store.clear()
+    count = _load_persisted_jobs(artifacts_dir=tmp_path)
+    assert count >= 1
+    assert job_id in _jobs_store
+
 

@@ -32,22 +32,103 @@ from backend.models import (
     RepairPreviewResponse,
     is_local_url,
 )
+import json
+import logging
+from contextlib import asynccontextmanager
+
 from backend.visual_diff import compare_or_create_baseline
+
+logger = logging.getLogger("omnisight.persistence")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 ARTIFACTS_DIR = PROJECT_ROOT / "artifacts"
 BASELINES_DIR = ARTIFACTS_DIR / "baselines"
 
-app = FastAPI(
-    title="OmniSight AI Backend",
-    description="Backend API for OmniSight automated visual UI testing and webhook processing",
-    version="0.1.0",
-)
-
 # In-memory thread-safe store for job tracking
 _jobs_lock = threading.Lock()
 _visual_lock = threading.Lock()
 _jobs_store: dict[str, dict] = {}
+
+
+def _save_completed_job(job_id: str, job_dir: Path | None = None) -> None:
+    """Save completed or terminal job metadata to artifacts/jobs/{job_id}/job.json."""
+    with _jobs_lock:
+        job_data = _jobs_store.get(job_id)
+        if not job_data:
+            return
+        payload = dict(job_data)
+
+    target_dir = job_dir or (ARTIFACTS_DIR / "jobs" / job_id)
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        job_file = target_dir / "job.json"
+        temp_file = target_dir / "job.json.tmp"
+        temp_file.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        temp_file.replace(job_file)
+    except Exception as exc:
+        logger.warning("Could not persist job %s: %s", job_id, exc)
+
+
+def _load_persisted_jobs(artifacts_dir: Path | None = None) -> int:
+    """Load valid completed jobs from artifacts/jobs/{job_id}/job.json safely."""
+    base_dir = artifacts_dir or ARTIFACTS_DIR
+    jobs_dir = base_dir / "jobs"
+    if not jobs_dir.is_dir():
+        return 0
+
+    loaded_count = 0
+    for child in jobs_dir.iterdir():
+        if not child.is_dir():
+            continue
+        job_file = child / "job.json"
+        if not job_file.is_file():
+            continue
+
+        try:
+            content = job_file.read_text(encoding="utf-8")
+            data = json.loads(content)
+            if not isinstance(data, dict):
+                logger.warning("Skipping invalid job file (not dict): %s", job_file)
+                continue
+
+            # Validate minimum required fields
+            job_id = data.get("job_id")
+            status_val = data.get("status")
+            storefront_url = data.get("storefront_url")
+            created_at = data.get("created_at")
+
+            if not (job_id and status_val and storefront_url and created_at):
+                logger.warning("Skipping incomplete job file (missing core keys): %s", job_file)
+                continue
+
+            # Validate that JobResponse schema accepts the payload
+            JobResponse(**data)
+
+            with _jobs_lock:
+                _jobs_store[str(job_id)] = data
+            loaded_count += 1
+        except Exception as exc:
+            logger.warning("Skipping unreadable or corrupted job file %s: %s", job_file, exc)
+
+    return loaded_count
+
+
+@asynccontextmanager
+async def lifespan(fastapi_app: FastAPI):
+    """FastAPI lifespan context manager to load persisted jobs on startup."""
+    _load_persisted_jobs()
+    yield
+
+
+app = FastAPI(
+    title="OmniSight AI Backend",
+    description="Backend API for OmniSight automated visual UI testing and webhook processing",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+# Load existing jobs on module import as well so test clients without lifespan see them immediately
+_load_persisted_jobs()
 
 
 def _execute_browser_job(job_id: str, storefront_url: str) -> None:
@@ -106,6 +187,7 @@ def _execute_browser_job(job_id: str, storefront_url: str) -> None:
                 _jobs_store[job_id]["artifacts"] = screenshot_paths
                 _jobs_store[job_id]["visual_comparison"] = visual_comparison
                 _jobs_store[job_id]["findings"] = findings
+        _save_completed_job(job_id, job_output_dir)
     except Exception as exc:
         now = datetime.now(timezone.utc).isoformat()
         with _jobs_lock:
@@ -113,6 +195,7 @@ def _execute_browser_job(job_id: str, storefront_url: str) -> None:
                 _jobs_store[job_id]["status"] = "failed"
                 _jobs_store[job_id]["completed_at"] = now
                 _jobs_store[job_id]["error"] = str(exc)
+        _save_completed_job(job_id, job_output_dir)
 
 
 def _slugify_url(url_str: str) -> str:
@@ -181,6 +264,7 @@ def _execute_ui_audit_job(job_id: str, page_url: str) -> None:
                 _jobs_store[job_id]["visual_comparison"] = visual_comparison
                 _jobs_store[job_id]["findings"] = result.get("findings", [])
                 _jobs_store[job_id]["ai_analysis"] = ai_analysis
+        _save_completed_job(job_id, job_output_dir)
     except Exception as exc:
         now = datetime.now(timezone.utc).isoformat()
         with _jobs_lock:
@@ -188,6 +272,7 @@ def _execute_ui_audit_job(job_id: str, page_url: str) -> None:
                 _jobs_store[job_id]["status"] = "failed"
                 _jobs_store[job_id]["completed_at"] = now
                 _jobs_store[job_id]["error"] = str(exc)
+        _save_completed_job(job_id, job_output_dir)
 
 
 @app.get("/health", response_model=HealthResponse, tags=["System"])
@@ -589,6 +674,7 @@ def preview_repair_in_isolated_browser(
         if payload.job_id in _jobs_store:
             _jobs_store[payload.job_id]["repair_preview_before_screenshots"] = result["before_screenshots"]
             _jobs_store[payload.job_id]["repair_preview_screenshots"] = result["screenshots"]
+    _save_completed_job(payload.job_id)
 
     return response
 
