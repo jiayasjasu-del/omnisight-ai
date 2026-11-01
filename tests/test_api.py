@@ -454,3 +454,212 @@ def test_completed_audit_automatically_persists_to_disk(client, tmp_path, monkey
     assert job_id in _jobs_store
 
 
+def test_validate_repair_css_table_and_image():
+    """_validate_repair_css accepts valid table-wrapper CSS and exact image rule, rejecting arbitrary CSS."""
+    from backend.browser_runner import _validate_repair_css
+
+    # 1. Valid table-wrapper CSS
+    valid_table = "div.fixture-table-scroll {\n  max-width: 100%;\n  overflow-x: auto;\n}"
+    assert "max-width: 100%" in _validate_repair_css(valid_table)
+
+    # 2. Exact image rule
+    valid_image = "img {\n  max-width: 100%;\n  height: auto;\n}"
+    assert _validate_repair_css(valid_image) == "img {\n  max-width: 100%;\n  height: auto;\n}"
+
+    valid_image_single_line = "img { max-width: 100%; height: auto; }"
+    assert "max-width: 100%" in _validate_repair_css(valid_image_single_line)
+
+    # 3. Arbitrary/disallowed CSS must raise ValueError
+    with pytest.raises(ValueError, match="Isolated repair preview only accepts"):
+        _validate_repair_css("body { background: red; }")
+
+    with pytest.raises(ValueError, match="Isolated repair preview only accepts"):
+        _validate_repair_css("img { display: none; }")
+
+    with pytest.raises(ValueError, match="Isolated repair preview only accepts"):
+        _validate_repair_css("div { width: 5000px; }")
+
+
+def test_image_overflow_repair_proposal_in_preview_fix(client, tmp_path, monkeypatch):
+    """The preview-fix endpoint accepts image overflow repair proposals and applies them in preview."""
+    from backend import main as main_module
+
+    job_id = "test-image-repair-job"
+    proposal = {
+        "title": "Constrain oversized images to viewport width",
+        "explanation": "Ensure images scale responsively",
+        "code": "img {\n  max-width: 100%;\n  height: auto;\n}",
+    }
+
+    job_data = {
+        "job_id": job_id,
+        "status": "completed",
+        "storefront_url": "http://127.0.0.1:5173/image-fixture",
+        "created_at": "2026-10-31T10:00:00Z",
+        "findings": [
+            {
+                "code": "horizontal_overflow",
+                "viewport": "mobile",
+                "message": "Page content is wider than viewport.",
+                "evidence": "Image width 1200px exceeds viewport 390px.",
+                "repair_proposal": proposal,
+            }
+        ],
+    }
+
+    with _jobs_lock:
+        _jobs_store.clear()
+        _jobs_store[job_id] = job_data
+
+    # Mock run_repair_preview so we don't need a live browser session in this unit test
+    def mock_run_repair_preview(storefront_url, proposal, output_dir):
+        return {
+            "css": proposal["code"],
+            "findings_before": [{"code": "horizontal_overflow", "viewport": "mobile"}],
+            "findings_after": [],
+            "before_screenshots": {"mobile": str(tmp_path / "before.png")},
+            "screenshots": {"mobile": str(tmp_path / "after.png")},
+        }
+
+    monkeypatch.setattr(main_module, "run_repair_preview", mock_run_repair_preview)
+
+    res = client.post("/repairs/preview-fix", json={"job_id": job_id, "finding_index": 0})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["status"] == "verified"
+    assert data["finding_code"] == "horizontal_overflow"
+    assert data["css"] == "img {\n  max-width: 100%;\n  height: auto;\n}"
+    assert len(data["findings_before"]) == 1
+    assert len(data["findings_after"]) == 0
+
+
+def test_live_isolated_repair_preview_oversized_image(tmp_path):
+    """Verify run_repair_preview in real Playwright resolves oversized image overflow."""
+    import http.server
+    import socketserver
+    import threading
+    from backend.browser_runner import run_repair_preview
+
+    html_content = (
+        "<!DOCTYPE html><html><head><style>body { margin: 0; padding: 0; }</style></head>"
+        "<body><h1>Oversized Image</h1>"
+        "<img src=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1000' height='200'%3E"
+        "%3Crect width='1000' height='200' fill='blue'/%3E%3C/svg%3E\" width=\"1000\" height=\"200\" />"
+        "</body></html>"
+    )
+
+    class ImageFixtureHandler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(html_content.encode("utf-8"))
+
+        def log_message(self, *args):
+            pass
+
+    server = socketserver.TCPServer(("127.0.0.1", 0), ImageFixtureHandler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        proposal = {
+            "title": "Constrain oversized images to viewport width",
+            "explanation": "This ensures large images scale responsively within their containers on mobile viewports rather than overflowing the page.",
+            "code": "img {\n  max-width: 100%;\n  height: auto;\n}",
+        }
+        res = run_repair_preview(
+            storefront_url=f"http://127.0.0.1:{port}/",
+            proposal=proposal,
+            output_dir=tmp_path / "repair-preview",
+            viewports=[("mobile", 390, 844)],
+        )
+
+        assert len(res["findings_before"]) == 1
+        before_finding = res["findings_before"][0]
+        assert before_finding["code"] == "horizontal_overflow"
+        assert before_finding["viewport"] == "mobile"
+        assert before_finding["repair_proposal"]["title"] == "Constrain oversized images to viewport width"
+        assert before_finding["repair_proposal"]["code"] == "img {\n  max-width: 100%;\n  height: auto;\n}"
+
+        # Findings after repair should be empty (overflow resolved!)
+        assert len(res["findings_after"]) == 0
+
+        # Screenshots should exist on disk
+        assert Path(res["before_screenshots"]["mobile"]).is_file()
+        assert Path(res["screenshots"]["mobile"]).is_file()
+    finally:
+        server.shutdown()
+
+
+def test_preview_fix_endpoint_real_browser_image_repair(client):
+    """End-to-end test of /repairs/preview-fix with real Playwright browser on oversized image."""
+    import http.server
+    import socketserver
+    import threading
+
+    html_content = (
+        "<!DOCTYPE html><html><head><style>body { margin: 0; padding: 0; }</style></head>"
+        "<body><h1>Oversized Image</h1>"
+        "<img src=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1000' height='200'%3E"
+        "%3Crect width='1000' height='200' fill='blue'/%3E%3C/svg%3E\" width=\"1000\" height=\"200\" />"
+        "</body></html>"
+    )
+
+    class ImageFixtureHandler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(html_content.encode("utf-8"))
+
+        def log_message(self, *args):
+            pass
+
+    server = socketserver.TCPServer(("127.0.0.1", 0), ImageFixtureHandler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        job_id = "real-image-preview-job"
+        job_data = {
+            "job_id": job_id,
+            "status": "completed",
+            "storefront_url": f"http://127.0.0.1:{port}/",
+            "created_at": "2026-10-31T10:00:00Z",
+            "findings": [
+                {
+                    "code": "horizontal_overflow",
+                    "viewport": "mobile",
+                    "message": "Page content is wider than viewport.",
+                    "evidence": "Image width exceeds viewport.",
+                    "repair_proposal": {
+                        "title": "Constrain oversized images to viewport width",
+                        "explanation": "Ensure images scale responsively",
+                        "code": "img {\n  max-width: 100%;\n  height: auto;\n}",
+                    },
+                }
+            ],
+        }
+
+        with _jobs_lock:
+            _jobs_store.clear()
+            _jobs_store[job_id] = job_data
+
+        res = client.post("/repairs/preview-fix", json={"job_id": job_id, "finding_index": 0})
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "verified"
+        assert data["finding_code"] == "horizontal_overflow"
+        assert data["viewport"] == "mobile"
+        assert data["css"] == "img {\n  max-width: 100%;\n  height: auto;\n}"
+        assert len(data["findings_before"]) >= 1
+        assert len(data["findings_after"]) == 0
+    finally:
+        server.shutdown()
+
+
+
+

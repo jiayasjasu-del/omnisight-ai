@@ -10,7 +10,7 @@ This guide provides a structured, 5-minute walkthrough script and technical runb
 OmniSight is a **UI audit and human-reviewed repair workflow prototype** designed to bridge automated browser testing with human inspection and reviewable repair suggestions. It does not automatically heal, edit, or modify the audited target website. It automates:
 - **Responsive capture**: Headless Playwright capture across standard desktop (1440×1000) and mobile (390×844) viewports.
 - **Deterministic DOM audit**: Rule-based detection of horizontal overflow, broken images, unlabelled form controls, unnamed buttons, and console errors.
-- **Repair suggestions and isolated verification**: Generating targeted CSS suggestions and trying the supported table fix in disposable Playwright pages, without editing target files.
+- **Repair suggestions and isolated verification**: Generating targeted CSS suggestions and trying the supported table and oversized image fixes in disposable Playwright pages, without editing target files.
 - **Visual regression tracking**: Side-by-side run comparisons classifying findings into resolved, introduced, and unchanged deltas.
 - **Optional AI visual analysis**: Inspecting screenshots via vision models for visual clipping and low contrast when configured.
 - **Human-approved draft PR workflow**: Presenting reviewers with exact unified diffs and branch targets, strictly creating draft pull requests only after explicit reviewer approval.
@@ -49,6 +49,7 @@ npm run dev -- --host 127.0.0.1
 | **OmniSight Dashboard** | `http://127.0.0.1:5173/audit` | Run audits, review screenshots, inspect findings |
 | **Audit History & Compare** | `http://127.0.0.1:5173/audit/history` | Timeline of past runs and side-by-side delta analysis |
 | **Broken Sample Page** | `http://127.0.0.1:5173/audit-fixture` | Intentional mobile table overflow test fixture |
+| **Image Overflow Sample** | `http://127.0.0.1:5173/audit-image-fixture` | Intentional mobile image overflow test fixture |
 | **Repaired Sample Page** | `http://127.0.0.1:5173/audit-fixture-fixed` | Corrected layout with CSS scroll wrapper applied |
 | **Demo Storefront** | `http://127.0.0.1:5173/` | OmniStore sample e-commerce application |
 | **FastAPI Swagger Docs** | `http://127.0.0.1:8000/docs` | Interactive backend API endpoints |

@@ -621,7 +621,7 @@ def preview_repair_in_isolated_browser(
     if finding.get("code") != "horizontal_overflow" or not proposal:
         raise HTTPException(
             status_code=400,
-            detail="The selected finding has no supported table-overflow repair proposal.",
+            detail="The selected finding has no supported overflow repair proposal.",
         )
     if not is_local_url(job_copy.get("storefront_url", "")):
         raise HTTPException(status_code=400, detail="Repair previews are restricted to local URLs.")

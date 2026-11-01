@@ -404,6 +404,9 @@ export default function AuditDashboard() {
                 <button className="sample-target-button" type="button" onClick={() => setSiteUrl(`${window.location.origin}/audit-fixture`)}>
                   Use broken sample <span>↗</span>
                 </button>
+                <button className="sample-target-button" type="button" onClick={() => setSiteUrl(`${window.location.origin}/audit-image-fixture`)}>
+                  Use image sample <span>↗</span>
+                </button>
                 <button className="sample-target-button sample-target-button--fixed" type="button" onClick={() => setSiteUrl(`${window.location.origin}/audit-fixture-fixed`)}>
                   Use repaired sample <span>↗</span>
                 </button>

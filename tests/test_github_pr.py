@@ -271,3 +271,33 @@ def test_api_routes_preview_and_create(sample_jobs_store):
     )
     assert create_res.status_code == 200
     assert create_res.json()["status"] == "not_configured"
+
+
+def test_preview_draft_pr_image_repair():
+    """Verify preview_draft_pr handles image overflow repair proposals correctly."""
+    job_id = "job-img-pr"
+    jobs_store = {
+        job_id: {
+            "job_id": job_id,
+            "status": "completed",
+            "findings": [
+                {
+                    "code": "horizontal_overflow",
+                    "viewport": "mobile",
+                    "evidence": "Image width 1000px exceeds viewport 390px.",
+                    "repair_proposal": {
+                        "title": "Constrain oversized images to viewport width",
+                        "explanation": "This ensures large images scale responsively.",
+                        "code": "img {\n  max-width: 100%;\n  height: auto;\n}",
+                    },
+                }
+            ],
+        }
+    }
+    preview = preview_draft_pr(job_id, 0, jobs_store)
+    assert preview["status"] == "ready"
+    assert "constrain-oversized-images" in preview["proposed_branch"]
+    assert "fix(ui): constrain oversized images to viewport width" == preview["title"]
+    assert "max-width: 100%" in preview["diff"]
+    assert "height: auto" in preview["diff"]
+

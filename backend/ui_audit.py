@@ -6,7 +6,7 @@ from typing import Any
 def audit_page(page: Any, viewport: str) -> list[dict[str, Any]]:
     """Inspect a rendered page for common, observable UI problems."""
     findings = page.evaluate(
-        """() => {
+        r"""() => {
           const findings = [];
           const root = document.documentElement;
           const viewportWidth = root.clientWidth;
@@ -57,13 +57,26 @@ def audit_page(page: Any, viewport: str) -> list[dict[str, Any]]:
                   ? `${tableWrapper.tagName.toLowerCase()}${safeClasses.map(name => `.${name}`).join("")}`
                   : tableWrapper.tagName.toLowerCase()
               : "";
-            const repairProposal = tableWrapper && !["auto", "scroll"].includes(wrapperOverflow)
-              ? {
-                  title: "Contain the wide table in its wrapper",
-                  explanation: "This lets the table scroll inside the card on narrow screens instead of widening the whole page. Review the selector and test the result before keeping the change.",
-                  code: `${wrapperSelector} {\n  max-width: 100%;\n  overflow-x: auto;\n}`
-                }
-              : null;
+
+            const overflowingImage = Array.from(document.images).find(img => {
+              const r = img.getBoundingClientRect();
+              return r.width > viewportWidth + 1 || r.right > viewportWidth + 1 || img.scrollWidth > viewportWidth + 1;
+            });
+
+            let repairProposal = null;
+            if (tableWrapper && !["auto", "scroll"].includes(wrapperOverflow)) {
+              repairProposal = {
+                title: "Contain the wide table in its wrapper",
+                explanation: "This lets the table scroll inside the card on narrow screens instead of widening the whole page. Review the selector and test the result before keeping the change.",
+                code: `${wrapperSelector} {\n  max-width: 100%;\n  overflow-x: auto;\n}`
+              };
+            } else if (overflowingImage) {
+              repairProposal = {
+                title: "Constrain oversized images to viewport width",
+                explanation: "This ensures large images scale responsively within their containers on mobile viewports rather than overflowing the page. Review the selector and test the result before keeping the change.",
+                code: `img {\n  max-width: 100%;\n  height: auto;\n}`
+              };
+            }
 
             findings.push({
               code: "horizontal_overflow",
