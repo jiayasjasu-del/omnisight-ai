@@ -216,3 +216,32 @@ class CreatePRResponse(BaseModel):
     branch: str | None = None
     detail: str | None = None
 
+
+class SelfHealingDemoRequest(BaseModel):
+    """Request payload for safe self-healing demonstration."""
+
+    custom_css: str | None = Field(
+        default=None,
+        description="Optional custom CSS repair rule; must conform to the strict CSS allowlist",
+    )
+
+
+class SelfHealingDemoResponse(BaseModel):
+    """Result of safe end-to-end self-healing demonstration."""
+
+    status: str
+    original_fixture_path: str
+    original_fixture_hash_before: str
+    original_fixture_hash_after: str
+    original_fixture_unmodified: bool
+    git_clean_verified: bool
+    css_allowlist_verified: bool
+    repair_css: str
+    unified_diff: str
+    frontend_build: dict[str, Any] = Field(default_factory=dict)
+    browser_audit: dict[str, Any] = Field(default_factory=dict)
+    live_server_info: dict[str, Any] = Field(default_factory=dict)
+    explanations: list[str] = Field(default_factory=list)
+    human_review_required: bool = True
+
+

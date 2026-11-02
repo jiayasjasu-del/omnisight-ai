@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse
 from backend.ai_analyzer import analyze_ui_audit
 from backend.browser_runner import run_playwright_flow, run_repair_preview, run_ui_audit
 from backend.github_service import create_draft_pr, get_github_config, preview_draft_pr
+from backend.self_healing import run_self_healing_demonstration
 from backend.models import (
     BuildWebhookPayload,
     BuildWebhookResponse,
@@ -30,6 +31,8 @@ from backend.models import (
     PreviewPRResponse,
     RepairPreviewRequest,
     RepairPreviewResponse,
+    SelfHealingDemoRequest,
+    SelfHealingDemoResponse,
     is_local_url,
 )
 import json
@@ -698,4 +701,22 @@ def submit_repair_pull_request(payload: CreatePRRequest) -> CreatePRResponse:
         pr_body=payload.pr_body,
     )
     return CreatePRResponse(**result)
+
+
+@app.post(
+    "/repairs/self-healing-demo",
+    response_model=SelfHealingDemoResponse,
+    tags=["Repairs"],
+)
+def demonstrate_safe_self_healing(
+    payload: SelfHealingDemoRequest = SelfHealingDemoRequest(),
+) -> SelfHealingDemoResponse:
+    """Execute a safe end-to-end self-healing demonstration using a temporary copy.
+
+    Applies only the approved CSS repair to a temporary copy of the oversized-image fixture,
+    runs frontend build and browser audit against it, and produces a unified diff for human review.
+    Never modifies the original fixture file and never commits, pushes, or opens a PR.
+    """
+    result = run_self_healing_demonstration(custom_css=payload.custom_css)
+    return SelfHealingDemoResponse(**result.to_dict())
 
