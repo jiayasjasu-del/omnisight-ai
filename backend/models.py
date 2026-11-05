@@ -243,5 +243,6 @@ class SelfHealingDemoResponse(BaseModel):
     live_server_info: dict[str, Any] = Field(default_factory=dict)
     explanations: list[str] = Field(default_factory=list)
     human_review_required: bool = True
+    screenshot_urls: dict[str, str] = Field(default_factory=dict)
 
 

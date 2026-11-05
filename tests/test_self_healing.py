@@ -160,3 +160,19 @@ def test_api_endpoint_self_healing_demonstration(api_client):
     assert reject_data["status"] == "rejected_by_allowlist"
     assert reject_data["css_allowlist_verified"] is False
     assert reject_data["original_fixture_unmodified"] is True
+
+
+def test_self_healing_demo_screenshots_route(api_client):
+    """Verify the backend endpoint serves only known demo screenshots and blocks arbitrary access."""
+    res = api_client.post("/repairs/self-healing-demo", json={})
+    assert res.status_code == 200
+
+    for phase in ("before", "after"):
+        for viewport in ("desktop", "mobile"):
+            resp = api_client.get(f"/repairs/self-healing-demo/screenshots/{phase}/{viewport}")
+            assert resp.status_code == 200
+            assert resp.headers["content-type"] == "image/png"
+
+    assert api_client.get("/repairs/self-healing-demo/screenshots/middle/desktop").status_code == 404
+    assert api_client.get("/repairs/self-healing-demo/screenshots/before/tablet").status_code == 404
+    assert api_client.get("/repairs/self-healing-demo/screenshots/before/..").status_code == 404

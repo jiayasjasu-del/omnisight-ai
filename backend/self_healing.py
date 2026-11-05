@@ -343,6 +343,7 @@ class SelfHealingResult:
     live_server_info: dict[str, Any] = field(default_factory=dict)
     explanations: list[str] = field(default_factory=list)
     human_review_required: bool = True
+    screenshot_urls: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -472,6 +473,12 @@ def run_self_healing_demonstration(
     file_unmodified = (hash_before == hash_after)
 
     overall_status = "verified" if (build_result.get("verified") and audit_result.get("verified")) else "partial"
+    screenshot_urls = {
+        "before_desktop": "/repairs/self-healing-demo/screenshots/before/desktop",
+        "before_mobile": "/repairs/self-healing-demo/screenshots/before/mobile",
+        "after_desktop": "/repairs/self-healing-demo/screenshots/after/desktop",
+        "after_mobile": "/repairs/self-healing-demo/screenshots/after/mobile",
+    } if (audit_result.get("screenshots_before") or audit_result.get("screenshots_after")) else {}
 
     return SelfHealingResult(
         status=overall_status,
@@ -488,6 +495,7 @@ def run_self_healing_demonstration(
         live_server_info=live_info,
         explanations=explanations,
         human_review_required=True,
+        screenshot_urls=screenshot_urls,
     )
 
 

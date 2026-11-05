@@ -720,3 +720,25 @@ def demonstrate_safe_self_healing(
     result = run_self_healing_demonstration(custom_css=payload.custom_css)
     return SelfHealingDemoResponse(**result.to_dict())
 
+
+@app.get(
+    "/repairs/self-healing-demo/screenshots/{phase}/{viewport}",
+    tags=["Repairs"],
+)
+def get_self_healing_demo_screenshot(phase: str, viewport: str) -> FileResponse:
+    """Serve a screenshot captured during the safe self-healing demonstration.
+
+    Restricted strictly to known demo artifacts (before/after for desktop/mobile).
+    Arbitrary filesystem access is completely blocked.
+    """
+    if phase not in {"before", "after"} or viewport not in {"desktop", "mobile"}:
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+
+    demo_artifacts_dir = (ARTIFACTS_DIR / "self_healing_demo").resolve()
+    file_path = (demo_artifacts_dir / f"self-heal-{phase}-{viewport}.png").resolve()
+
+    if demo_artifacts_dir not in file_path.parents or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Screenshot not found")
+
+    return FileResponse(file_path, media_type="image/png")
+
