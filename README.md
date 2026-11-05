@@ -25,9 +25,20 @@ Implemented:
 - Audit history view at `/audit/history` with side-by-side delta comparisons (resolved, introduced, unchanged findings)
 - Human-approved GitHub draft PR preparation workflow with exact unified diff inspection and server-side token safety
 - Isolated repair preview: applies the supported table-overflow CSS only in disposable Playwright pages, reruns the audit, and captures before/after screenshots without editing the audited site
-- **5-Minute Presentation Guide**: See [DEMO.md](DEMO.md) for the walkthrough script covering the UI audit and human-reviewed repair prototype, diff preview, and port recovery steps
+- **Safe Self-Healing Demonstration**: Dedicated dashboard section calling `POST /repairs/self-healing-demo`. Applies an approved allowlisted CSS rule (`img { max-width: 100%; height: auto; }`) to an isolated temporary copy (`AuditImageFixture.temp.jsx`) of the oversized-image sample. Verifies compilation with Vite SSR, runs Playwright audits across desktop (1440×1000) and mobile (390×844) viewports (resolving the single mobile overflow finding to 0 findings), and displays the generated unified diff alongside before/after screenshots served via `/repairs/self-healing-demo/screenshots/{phase}/{viewport}`. The original fixture file remains cryptographically unchanged, human review is strictly required, and arbitrary websites are not automatically repaired.
+- **5-Minute Presentation Guide**: See [DEMO.md](DEMO.md) for the walkthrough script covering the UI audit, self-healing demonstration, human-reviewed repair prototype, diff preview, and port recovery steps
 
 Optional screenshot-based AI explanations are implemented but require an `OPENAI_API_KEY`. A supported CSS proposal can be tried in a disposable browser page and re-audited; this does not modify the audited site's source files. The OmniStore shopping flow remains a sample target used to exercise automation.
+
+## OmniSight UI audit and repair prototype
+
+OmniSight captures pages at desktop and mobile sizes, detects selected UI issues, compares screenshots with saved baselines, and preserves audit history.
+
+The self-healing demo applies an approved CSS rule to a temporary copy of an oversized-image sample, builds and audits the copy, then displays the proposed diff and before-and-after screenshots. The original fixture remains unchanged, and repairs require human review.
+
+Verified demo result: 1 mobile overflow finding before repair, 0 afterward. The reported tests, frontend lint, and production build passed.
+
+Repairs cover supported sample cases; the system does not automatically repair arbitrary websites. Optional AI vision analysis requires an API key.
 
 ### Week 4 progress update — October 26–27, 2026
 
@@ -128,6 +139,19 @@ The interactive OpenAPI documentation will be available at `http://127.0.0.1:800
    Invoke-RestMethod -Uri "http://127.0.0.1:8000/jobs/$($job.job_id)" -Method Get | ConvertTo-Json -Depth 8
    ```
    The job response includes `findings`, with a finding code, viewport, evidence, and repair suggestion, plus desktop and mobile audit screenshots under `artifacts/jobs/{job_id}/`. It also includes `ai_analysis`, with status `completed`, `not_configured`, `skipped`, or `error`.
+
+5. **Execute safe self-healing demonstration** (temporary copy verification):
+   ```powershell
+   Invoke-RestMethod -Uri "http://127.0.0.1:8000/repairs/self-healing-demo" -Method Post -ContentType "application/json" -Body "{}"
+   ```
+   Applies the approved CSS allowlist repair rule (`img { max-width: 100%; height: auto; }`) to an isolated temporary copy of `frontend/src/AuditImageFixture.jsx`, verifies compilation with Vite SSR, runs Playwright audits across desktop and mobile, asserts file integrity (before/after SHA-256 hashes), and returns the unified diff and verification outcomes. The original fixture file is NEVER modified in place, and code is NEVER committed, pushed, or automatically PR'd.
+
+6. **Serve self-healing demo screenshot artifacts**:
+   ```powershell
+   # Phase: before | after; Viewport: desktop | mobile
+   Invoke-RestMethod -Uri "http://127.0.0.1:8000/repairs/self-healing-demo/screenshots/before/mobile" -Method Get
+   ```
+   Serves only the known demo artifacts from `artifacts/self_healing_demo/`. Arbitrary filesystem access and path traversals are strictly blocked.
 
 ### Before/after audit workflow (testing the repair proposal)
 
@@ -256,7 +280,14 @@ From the repository root (ensure the storefront is running at `http://127.0.0.1:
 .\.venv\Scripts\python.exe -m pytest tests\test_github_pr.py -v
 ```
 
-To run all 31 automated tests across all test suites:
+### Safe self-healing demonstration tests
+
+```powershell
+.\.venv\Scripts\python.exe -m pytest tests\test_self_healing.py -v
+```
+Verifies original fixture integrity (SHA-256 unchanged), strict CSS allowlist rejection of arbitrary CSS, unified diff generation, Vite SSR temporary-copy compilation, mobile overflow resolution in Playwright, and screenshot artifact serving.
+
+To run all automated tests across test suites (45 passing tests):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -v
@@ -317,5 +348,16 @@ Screenshots are written to `artifacts/omnistore-desktop.png` and `artifacts/omni
 - Added **Try fix in isolated browser** for supported wide-table overflow proposals.
 - The backend injects only a validated `max-width: 100%; overflow-x: auto;` rule in temporary Playwright pages, reruns the browser audit at desktop and mobile sizes, and captures preview screenshots.
 - Original findings and audited source files are not modified. Arbitrary CSS and other repair types are not supported by this preview.
+
+### Safe self-healing demonstration milestone
+
+- Added a dedicated dashboard section and backend endpoint (`POST /repairs/self-healing-demo`) for isolated self-healing verification.
+- Applies the approved CSS repair rule (`img { max-width: 100%; height: auto; }`) only to an isolated temporary copy of `frontend/src/AuditImageFixture.jsx` (`AuditImageFixture.temp.jsx`).
+- Verified the temporary copy with Vite SSR (`npx vite build --ssr`) and Playwright audits across desktop (1440×1000) and mobile (390×844) viewports.
+- Result: Detected 1 mobile horizontal overflow finding before repair, and verified 0 findings after repair.
+- Cryptographically verified that the original fixture file remains unchanged (SHA-256 before matches SHA-256 after).
+- Displays the generated unified diff, build and browser audit metrics, and links/thumbnails to before/after screenshots via a secure endpoint (`GET /repairs/self-healing-demo/screenshots/{phase}/{viewport}`) that serves only known demo artifacts without exposing arbitrary filesystem paths.
+- Guarantees: Human review is strictly required; no code is automatically committed, pushed, or PR'd; arbitrary websites are not automatically repaired.
+- Verification results: All 8 self-healing tests in `tests/test_self_healing.py` pass; frontend linter (`oxlint`) passes with 0 errors and 0 warnings; production frontend build (`vite build`) succeeds in ~411ms; all 37 core/PR tests pass (45 total passing automated tests).
 
 

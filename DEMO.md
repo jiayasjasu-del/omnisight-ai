@@ -11,6 +11,7 @@ OmniSight is a **UI audit and human-reviewed repair workflow prototype** designe
 - **Responsive capture**: Headless Playwright capture across standard desktop (1440×1000) and mobile (390×844) viewports.
 - **Deterministic DOM audit**: Rule-based detection of horizontal overflow, broken images, unlabelled form controls, unnamed buttons, and console errors.
 - **Repair suggestions and isolated verification**: Generating targeted CSS suggestions and trying the supported table and oversized image fixes in disposable Playwright pages, without editing target files.
+- **Safe Self-Healing Demonstration**: End-to-end automated verification of an approved allowlisted CSS fix on a temporary copy of the oversized-image sample (`AuditImageFixture.jsx`), verified with Vite SSR compilation and Playwright audits across desktop/mobile viewports, displaying the unified diff and before/after screenshots for human review.
 - **Visual regression tracking**: Side-by-side run comparisons classifying findings into resolved, introduced, and unchanged deltas.
 - **Optional AI visual analysis**: Inspecting screenshots via vision models for visual clipping and low contrast when configured.
 - **Human-approved draft PR workflow**: Presenting reviewers with exact unified diffs and branch targets, strictly creating draft pull requests only after explicit reviewer approval.
@@ -20,6 +21,7 @@ OmniSight is a **UI audit and human-reviewed repair workflow prototype** designe
 - **Local-first focus**: Optimized for local development servers (`127.0.0.1` / `localhost`), not public cloud web crawling.
 - **Zero-call default for AI**: When `OPENAI_API_KEY` is not provided, AI analysis reports `not_configured`. The deterministic audit and browser checks run 100% locally with zero external network dependencies.
 - **Draft-only PRs & token requirement**: Without `GITHUB_TOKEN` set on the backend, reviewers can open and inspect the full diff preview, but cannot create a draft PR (the create button is safely disabled and the server reports `not_configured`). When configured, PRs are strictly created as GitHub **Drafts** (`draft: true`). The demo must stop at the preview and must not submit a PR.
+- **Self-healing demo scope**: The self-healing demonstration applies only an approved allowlisted CSS rule to a temporary copy of the oversized-image sample. The original fixture file remains cryptographically unchanged (verified via SHA-256 before/after hashes), human review is strictly required, and arbitrary websites are not automatically repaired.
 
 ---
 
@@ -47,6 +49,7 @@ npm run dev -- --host 127.0.0.1
 | Page / Resource | Local URL | Purpose |
 | :--- | :--- | :--- |
 | **OmniSight Dashboard** | `http://127.0.0.1:5173/audit` | Run audits, review screenshots, inspect findings |
+| **Self-Healing Demo** | `http://127.0.0.1:5173/audit#self-healing` | Safe isolated repair verification on temporary copy |
 | **Audit History & Compare** | `http://127.0.0.1:5173/audit/history` | Timeline of past runs and side-by-side delta analysis |
 | **Broken Sample Page** | `http://127.0.0.1:5173/audit-fixture` | Intentional mobile table overflow test fixture |
 | **Image Overflow Sample** | `http://127.0.0.1:5173/audit-image-fixture` | Intentional mobile image overflow test fixture |
@@ -116,12 +119,23 @@ npm run dev -- --host 127.0.0.1
 
 ---
 
-### Minute 5: AI Analysis State & Human-Approved Draft PR (4:00 – 5:00)
-1. Navigate back to `http://127.0.0.1:5173/audit` (or view the broken audit card).
-2. **AI Analysis State**:
+### Minute 5: Safe Self-Healing Demo & Human-Approved Draft PR (4:00 – 5:00)
+1. Navigate back to `http://127.0.0.1:5173/audit`.
+2. **Safe Self-Healing Demonstration**:
+   - Scroll to the **Safe Self-Healing Demonstration** card (or click **"⚡ Self-healing demo"** in the sidebar).
+   - Click **"▶ Run Self-Healing Demo"**.
+   - Observe the loading state while the backend executes the safe pipeline against an isolated temporary copy (`AuditImageFixture.temp.jsx`).
+   - Walk through the verified result:
+     - **Result Status**: `Self-Healing Status: VERIFIED` with the `Human Review Required` badge.
+     - **Original Fixture Integrity**: Confirms `✓ Unmodified & Intact` with identical SHA-256 before/after hashes for `AuditImageFixture.jsx`.
+     - **Build & Audit Outcomes**: Vite SSR build verified with exit code `0`; Playwright audit detected 1 mobile overflow finding before repair and 0 findings after repair.
+     - **Unified Diff**: Displays the proposed unified diff for human inspection.
+     - **Before & After Screenshots**: Direct links and thumbnails for Desktop and Mobile (served securely from `/repairs/self-healing-demo/screenshots/{phase}/{viewport}`).
+   - Emphasize: *"The original fixture file is NEVER edited in place, code is NEVER committed, pushed, or PR'd, and arbitrary websites are not automatically repaired."*
+3. **AI Analysis State**:
    - Point out the AI analysis card showing `Status: not_configured`.
    - Explain: *"When `OPENAI_API_KEY` is not set on the server, OmniSight executes zero external API calls, preserves data privacy, and runs 100% locally. If enabled, it analyzes the captured screenshots for visual clipping and color contrast."*
-3. **GitHub Draft PR Review Modal**:
+4. **GitHub Draft PR Review Modal**:
    - On the broken audit's repair proposal card, click **"Review GitHub Draft PR"**.
    - Show the review modal:
      - **Target Repository & Base Branch**: `jiayasjasu-del/omnisight-ai` on base branch `feature/visual-diff-report` (the backend's configured default; changes only if `GITHUB_BASE_BRANCH` is set in the environment).
@@ -130,8 +144,8 @@ npm run dev -- --host 127.0.0.1
      - **Security Note**: Point out the banner: *"Human Approval Required: OmniSight will not auto-apply code. A draft pull request will be opened on GitHub for human code review. It will not be merged automatically."*
    - Emphasize: *"Without GITHUB_TOKEN set on the backend, I can show the diff preview but cannot create a draft PR. The demo must stop at the preview and must not submit a PR."*
    - Click **"✕"** or **"Reject Proposal"** to safely close the modal without creating a PR.
-4. **Conclusion**:
-   > *"OmniSight is a prototype for UI auditing and human-reviewed repairs that pairs automated browser captures with regression tracking and human-approved repair proposals—without ever altering the target site automatically."*
+5. **Conclusion**:
+   > *"OmniSight is a prototype for UI auditing and human-reviewed repairs that pairs automated browser captures with regression tracking, safe isolated self-healing demonstrations, and human-approved repair proposals—without ever altering the target site automatically."*
 
 ---
 
@@ -159,6 +173,6 @@ Stop-Process -Id <PID> -Force
 
 ### Issue: Running backend tests before demo
 ```powershell
-# Full test suite (all 30 tests should pass)
+# Full test suite (all 45 automated tests should pass)
 .\.venv\Scripts\python.exe -m pytest -v
 ```
