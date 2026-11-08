@@ -28,7 +28,7 @@ Implemented:
 - **Safe Self-Healing Demonstration**: Dedicated dashboard section calling `POST /repairs/self-healing-demo`. Applies an approved allowlisted CSS rule (`img { max-width: 100%; height: auto; }`) to an isolated temporary copy (`AuditImageFixture.temp.jsx`) of the oversized-image sample. Verifies compilation with Vite SSR, runs Playwright audits across desktop (1440×1000) and mobile (390×844) viewports (resolving the single mobile overflow finding to 0 findings), and displays the generated unified diff alongside before/after screenshots served via `/repairs/self-healing-demo/screenshots/{phase}/{viewport}`. The original fixture file remains cryptographically unchanged, human review is strictly required, and arbitrary websites are not automatically repaired.
 - **5-Minute Presentation Guide**: See [DEMO.md](DEMO.md) for the walkthrough script covering the UI audit, self-healing demonstration, human-reviewed repair prototype, diff preview, and port recovery steps
 
-Optional screenshot-based AI explanations are implemented but require an `OPENAI_API_KEY`. A supported CSS proposal can be tried in a disposable browser page and re-audited; this does not modify the audited site's source files. The OmniStore shopping flow remains a sample target used to exercise automation.
+Optional screenshot-based AI explanations support Gemini (`GEMINI_API_KEY`, recommended) or OpenAI (`OPENAI_API_KEY`). A supported CSS proposal can be tried in a disposable browser page and re-audited; this does not modify the audited site's source files. The OmniStore shopping flow remains a sample target used to exercise automation.
 
 ## OmniSight UI audit and repair prototype
 
@@ -54,7 +54,7 @@ Repairs cover supported sample cases; the system does not automatically repair a
 - Node.js and npm
 - Python 3.11
 - Google Chrome or Chromium installed by Playwright
-- Optional: an OpenAI API key for screenshot-based AI explanations (API usage may incur charges)
+- Optional: a Gemini API key for screenshot-based AI explanations (or an OpenAI API key; provider usage limits and charges depend on the account)
 
 ## Set up the frontend
 
@@ -97,18 +97,22 @@ If the environment already existed before visual comparison was added, install P
 From the repository root:
 
 ```powershell
-# Optional: enable vision-model visual analysis for UI audit jobs.
-# Set this in your local terminal session before starting the backend.
+# Optional: Gemini visual analysis (recommended). Set before starting backend.
 # Never commit API keys or put them in code, logs, or shared config.
-$env:OPENAI_API_KEY = "your-actual-api-key"
+$env:GEMINI_API_KEY = "your-gemini-api-key"
+# Optional: select provider/model (defaults to Gemini when GEMINI_API_KEY is present)
+# $env:AI_PROVIDER = "gemini"
+# $env:GEMINI_MODEL = "gemini-3.8-flash"
 
-# Optional: override default model (defaults to gpt-4o-mini)
-# $env:OPENAI_MODEL = "gpt-4o"
+# OpenAI remains supported as an alternative:
+# $env:OPENAI_API_KEY = "your-openai-api-key"
+# $env:AI_PROVIDER = "openai"
+# $env:OPENAI_MODEL = "gpt-4o-mini"
 
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-If `OPENAI_API_KEY` is not set, UI audits remain fully functional, running all browser checks and returning `ai_analysis.status = "not_configured"`. When configured, the backend sends the captured desktop and mobile screenshots and browser findings to the vision model for visual review (clipped content, overlapping elements, and contrast). The model does not edit files or apply repairs.
+If neither API key is set, UI audits remain fully functional, running all browser checks and returning `ai_analysis.status = "not_configured"`. When configured, the backend sends the captured desktop and mobile screenshots and browser findings to the selected vision model for visual review (clipped content, overlapping elements, and contrast). The model does not edit files or apply repairs. `GEMINI_API_KEY` selects Gemini by default; use `AI_PROVIDER` to explicitly choose `gemini` or `openai` when both keys are present.
 
 The interactive OpenAPI documentation will be available at `http://127.0.0.1:8000/docs`.
 
@@ -208,17 +212,22 @@ The model identifies visual problems that rule-based DOM checks often miss:
 
 ### Setup instructions
 
-1. Set `OPENAI_API_KEY` in your terminal session before starting the backend:
+1. Set `GEMINI_API_KEY` in your terminal session before starting the backend (recommended):
    ```powershell
    # Windows PowerShell
-   $env:OPENAI_API_KEY = "your-api-key-here"
+   $env:GEMINI_API_KEY = "your-gemini-api-key-here"
 
-   # Optional: specify model (defaults to gpt-4o-mini)
-   # $env:OPENAI_MODEL = "gpt-4o"
+   # Optional: select Gemini and override its default model
+   # $env:AI_PROVIDER = "gemini"
+   # $env:GEMINI_MODEL = "gemini-3.8-flash"
+
+   # Alternatively, use OpenAI
+   # $env:OPENAI_API_KEY = "your-openai-api-key-here"
+   # $env:AI_PROVIDER = "openai"
    ```
    ```bash
    # Linux / macOS Bash
-   export OPENAI_API_KEY="your-api-key-here"
+   export GEMINI_API_KEY="your-gemini-api-key-here"
    ```
 2. Start the backend:
    ```powershell
@@ -230,7 +239,7 @@ The model identifies visual problems that rule-based DOM checks often miss:
 
 ### Privacy and Data Flow
 
-- **Zero-call default**: When `OPENAI_API_KEY` is not set, **no external network requests are made**. The audit runs entirely on your local machine using Playwright.
+- **Zero-call default**: When neither `GEMINI_API_KEY` nor `OPENAI_API_KEY` is set, **no external AI requests are made**. The audit runs entirely on your local machine using Playwright.
 - **Data transmitted when enabled**:
   - The captured desktop and mobile screenshot images (Base64-encoded over HTTPS).
   - The array of browser-detected findings (evidence strings, selectors, and dimensions) for background context.

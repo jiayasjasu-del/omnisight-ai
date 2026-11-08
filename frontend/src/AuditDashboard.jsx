@@ -158,7 +158,7 @@ function downloadAuditReport(report) {
         '',
       )
     } else if (ai.status === 'not_configured') {
-      lines.push('## AI visual analysis', '', 'Not configured (OPENAI_API_KEY environment variable not set). Browser checks ran normally.', '')
+      lines.push('## AI visual analysis', '', 'Not configured (GEMINI_API_KEY environment variable not set). Browser checks ran normally.', '')
     } else if (ai.status === 'error') {
       lines.push('## AI visual analysis', '', `Unavailable: ${ai.message || 'Provider error'}`, '')
     }
@@ -897,7 +897,7 @@ export default function AuditDashboard() {
                     <div className="ai-empty-icon">✦</div>
                     <div>
                       <strong>Vision analysis not configured</strong>
-                      <p>Set the <code>OPENAI_API_KEY</code> environment variable in your backend terminal to enable optional screenshot-based vision analysis for clipped content, overlapping elements, and contrast issues.</p>
+                      <p>Set the <code>GEMINI_API_KEY</code> environment variable in your backend terminal to enable optional screenshot-based vision analysis for clipped content, overlapping elements, and contrast issues.</p>
                       <small>The browser audit and rule-based checks above run completely offline without an API key.</small>
                     </div>
                   </div>
