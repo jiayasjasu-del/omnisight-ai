@@ -17,7 +17,7 @@ from backend.ai_analyzer import (
 
 
 def test_sanitize_error_redacts_api_keys():
-    """Verify that both Gemini and OpenAI API key patterns are scrubbed from error details."""
+    """Verify that Gemini, OpenAI, and AQ API key patterns are scrubbed from error details."""
     raw_openai = "Request failed for key sk-proj-1234567890abcdef1234567890: 401 Unauthorized"
     sanitized_openai = _sanitize_error(raw_openai)
     assert "sk-proj-1234567890abcdef1234567890" not in sanitized_openai
@@ -27,6 +27,11 @@ def test_sanitize_error_redacts_api_keys():
     sanitized_gemini = _sanitize_error(raw_gemini)
     assert "AIzaSyD1234567890abcdef1234567890" not in sanitized_gemini
     assert "AIza***[REDACTED]***" in sanitized_gemini
+
+    raw_aq = "Request failed for key AQ.Abc1234567890_-xyz12345: 403 Forbidden"
+    sanitized_aq = _sanitize_error(raw_aq)
+    assert "AQ.Abc1234567890_-xyz12345" not in sanitized_aq
+    assert "AQ.***[REDACTED]***" in sanitized_aq
 
 
 def test_parse_ui_analysis_normalization():
@@ -249,3 +254,179 @@ def test_analyze_ui_audit_gemini_empty_response(tmp_path, monkeypatch):
 
     assert result["status"] == "error"
     assert "no analysis text" in result["detail"]
+
+
+def test_sanitize_error_redacts_fake_aq_key():
+    """Verify that fake AQ. prefix keys are properly redacted from error strings."""
+    fake_key = "AQ.fakeKeyToken1234567890_test-123"
+    raw_message = f"Gemini API returned error for credentials {fake_key}"
+    sanitized = _sanitize_error(raw_message)
+    assert fake_key not in sanitized
+    assert "AQ.***[REDACTED]***" in sanitized
+
+
+def test_analyze_ui_audit_gemini_retries_on_429_and_succeeds(tmp_path, monkeypatch):
+    """Verify that HTTP 429 triggers retry with backoff and succeeds on retry."""
+    import io
+    import time
+
+    monkeypatch.setenv("GEMINI_API_KEY", "mock-gemini-key")
+    desktop_img = tmp_path / "desktop.png"
+    desktop_img.write_bytes(b"\x89PNG\r\n\x1a\nfake-png-bytes")
+
+    gemini_output = {
+        "summary": "Resolved layout check.",
+        "issues": [],
+        "recommended_next_steps": ["Check complete"],
+    }
+    api_response = {
+        "candidates": [{"content": {"parts": [{"text": json.dumps(gemini_output)}]}}]
+    }
+    mock_success = MagicMock()
+    mock_success.read.return_value = json.dumps(api_response).encode("utf-8")
+    mock_success.__enter__.return_value = mock_success
+
+    http_429_error = urllib.error.HTTPError(
+        url="https://generativelanguage.googleapis.com",
+        code=429,
+        msg="Too Many Requests",
+        hdrs={},
+        fp=io.BytesIO(b'{"error": "rate limit"}'),
+    )
+
+    mock_sleep = MagicMock()
+    monkeypatch.setattr(time, "sleep", mock_sleep)
+
+    calls = [http_429_error, mock_success]
+
+    def mock_urlopen(req, timeout=60):
+        item = calls.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+
+    result = analyze_ui_audit(
+        screenshots={"audit_desktop": str(desktop_img)},
+        findings=[],
+    )
+
+    assert result["status"] == "completed"
+    assert result["summary"] == "Resolved layout check."
+    assert mock_sleep.call_count == 1
+
+
+def test_analyze_ui_audit_gemini_retries_on_503_and_succeeds(tmp_path, monkeypatch):
+    """Verify that HTTP 503 triggers retry with backoff and succeeds on retry."""
+    import io
+    import time
+
+    monkeypatch.setenv("GEMINI_API_KEY", "mock-gemini-key")
+    desktop_img = tmp_path / "desktop.png"
+    desktop_img.write_bytes(b"\x89PNG\r\n\x1a\nfake-png-bytes")
+
+    gemini_output = {
+        "summary": "Service recovered.",
+        "issues": [],
+        "recommended_next_steps": [],
+    }
+    api_response = {
+        "candidates": [{"content": {"parts": [{"text": json.dumps(gemini_output)}]}}]
+    }
+    mock_success = MagicMock()
+    mock_success.read.return_value = json.dumps(api_response).encode("utf-8")
+    mock_success.__enter__.return_value = mock_success
+
+    http_503_error = urllib.error.HTTPError(
+        url="https://generativelanguage.googleapis.com",
+        code=503,
+        msg="Service Unavailable",
+        hdrs={},
+        fp=io.BytesIO(b'{"error": "unavailable"}'),
+    )
+
+    mock_sleep = MagicMock()
+    monkeypatch.setattr(time, "sleep", mock_sleep)
+
+    calls = [http_503_error, mock_success]
+
+    def mock_urlopen(req, timeout=60):
+        item = calls.pop(0)
+        if isinstance(item, Exception):
+            raise item
+        return item
+
+    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+
+    result = analyze_ui_audit(
+        screenshots={"audit_desktop": str(desktop_img)},
+        findings=[],
+    )
+
+    assert result["status"] == "completed"
+    assert mock_sleep.call_count == 1
+
+
+def test_analyze_ui_audit_gemini_retry_exhaustion_on_429(tmp_path, monkeypatch):
+    """Verify that when 429 persists, up to 3 retries occur before returning error status."""
+    import io
+    import time
+
+    monkeypatch.setenv("GEMINI_API_KEY", "mock-gemini-key")
+    desktop_img = tmp_path / "desktop.png"
+    desktop_img.write_bytes(b"\x89PNG\r\n\x1a\nfake-png-bytes")
+
+    mock_sleep = MagicMock()
+    monkeypatch.setattr(time, "sleep", mock_sleep)
+
+    def raise_429(req, timeout=60):
+        raise urllib.error.HTTPError(
+            url="https://generativelanguage.googleapis.com",
+            code=429,
+            msg="Too Many Requests",
+            hdrs={},
+            fp=io.BytesIO(b'{"error": "rate limit"}'),
+        )
+
+    monkeypatch.setattr(urllib.request, "urlopen", raise_429)
+
+    result = analyze_ui_audit(
+        screenshots={"audit_desktop": str(desktop_img)},
+        findings=[],
+    )
+
+    assert result["status"] == "error"
+    assert result["message"] == "AI visual analysis could not be completed."
+    assert mock_sleep.call_count == 3
+
+
+def test_gemini_default_model_and_override(tmp_path, monkeypatch):
+    """Verify that default model is gemini-3.1-flash-lite and GEMINI_MODEL can override it."""
+    monkeypatch.setenv("GEMINI_API_KEY", "mock-gemini-key")
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    desktop_img = tmp_path / "desktop.png"
+    desktop_img.write_bytes(b"\x89PNG\r\n\x1a\nfake-png-bytes")
+
+    captured_urls = []
+
+    gemini_output = {"summary": "OK", "issues": [], "recommended_next_steps": []}
+    api_response = {"candidates": [{"content": {"parts": [{"text": json.dumps(gemini_output)}]}}]}
+    mock_resp = MagicMock()
+    mock_resp.read.return_value = json.dumps(api_response).encode("utf-8")
+    mock_resp.__enter__.return_value = mock_resp
+
+    def mock_urlopen(req, timeout=60):
+        captured_urls.append(req.full_url)
+        return mock_resp
+
+    monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+
+    # 1. Default model without GEMINI_MODEL set
+    analyze_ui_audit(screenshots={"audit_desktop": str(desktop_img)}, findings=[])
+    assert "models/gemini-3.1-flash-lite:generateContent" in captured_urls[0]
+
+    # 2. Override with GEMINI_MODEL
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-custom-pro")
+    analyze_ui_audit(screenshots={"audit_desktop": str(desktop_img)}, findings=[])
+    assert "models/gemini-custom-pro:generateContent" in captured_urls[1]

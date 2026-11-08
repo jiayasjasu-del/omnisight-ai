@@ -6,6 +6,8 @@ import base64
 import json
 import os
 import re
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -56,7 +58,21 @@ class UIAnalysis(BaseModel):
 def _sanitize_error(message: str) -> str:
     """Mask any potential API key tokens from exception messages."""
     message = re.sub(r"sk-[a-zA-Z0-9_\-]{10,}", "sk-***[REDACTED]***", message)
-    return re.sub(r"AIza[a-zA-Z0-9_\-]{20,}", "AIza***[REDACTED]***", message)
+    message = re.sub(r"AIza[a-zA-Z0-9_\-]{20,}", "AIza***[REDACTED]***", message)
+    return re.sub(r"AQ\.[A-Za-z0-9_\-]{20,}", "AQ.***[REDACTED]***", message)
+
+
+def _is_retryable_http_error(exc: Exception) -> bool:
+    """Check if exception corresponds to an HTTP 429 (rate limit) or 503 (service unavailable)."""
+    code = getattr(exc, "code", None) or getattr(exc, "status_code", None)
+    if code in {429, 503}:
+        return True
+    if isinstance(exc, urllib.error.HTTPError) and exc.code in {429, 503}:
+        return True
+    msg = str(exc)
+    if re.search(r"\b(429|503)\b", msg):
+        return True
+    return False
 
 
 def parse_ui_analysis(raw: Any) -> UIAnalysis:
@@ -146,7 +162,7 @@ def analyze_ui_audit(
     try:
         user_text = USER_PROMPT_HEADER + json.dumps(findings[:40], ensure_ascii=False)
         if provider == "gemini":
-            model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+            model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
             gemini_parts: list[dict[str, Any]] = [{"text": f"{SYSTEM_PROMPT}\n\n{user_text}"}]
             for image_path in image_paths:
                 suffix = image_path.suffix.lower()
@@ -192,39 +208,52 @@ def analyze_ui_audit(
                 },
             }
 
-            if client is not None:
-                if hasattr(client, "generate_content"):
-                    res = client.generate_content(gemini_parts)
-                    raw_text = getattr(res, "text", "")
-                    if not raw_text and isinstance(res, (dict, list)):
-                        raw_text = json.dumps(res)
-                    elif not raw_text and isinstance(res, str):
-                        raw_text = res
-                elif callable(client):
-                    res = client(gemini_parts)
-                    raw_text = getattr(res, "text", "") if hasattr(res, "text") else (res if isinstance(res, str) else json.dumps(res))
-                elif hasattr(client, "text"):
-                    raw_text = client.text
-                elif isinstance(client, (dict, str)):
-                    raw_text = client if isinstance(client, str) else json.dumps(client)
-                else:
-                    raw_text = getattr(client, "text", str(client))
-            else:
-                endpoint = (
-                    "https://generativelanguage.googleapis.com/v1beta/models/"
-                    f"{urllib.parse.quote(model, safe='-')}:generateContent"
-                )
-                request = urllib.request.Request(
-                    endpoint,
-                    data=json.dumps(payload).encode("utf-8"),
-                    headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
-                    method="POST",
-                )
-                with urllib.request.urlopen(request, timeout=60) as response:
-                    response_data = json.loads(response.read().decode("utf-8"))
-                candidates = response_data.get("candidates", [])
-                parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
-                raw_text = "".join(part.get("text", "") for part in parts)
+            max_retries = 3
+            backoff_base = 0.5
+            raw_text = ""
+
+            for attempt in range(max_retries + 1):
+                try:
+                    if client is not None:
+                        if hasattr(client, "generate_content"):
+                            res = client.generate_content(gemini_parts)
+                            raw_text = getattr(res, "text", "")
+                            if not raw_text and isinstance(res, (dict, list)):
+                                raw_text = json.dumps(res)
+                            elif not raw_text and isinstance(res, str):
+                                raw_text = res
+                        elif callable(client):
+                            res = client(gemini_parts)
+                            raw_text = getattr(res, "text", "") if hasattr(res, "text") else (res if isinstance(res, str) else json.dumps(res))
+                        elif hasattr(client, "text"):
+                            raw_text = client.text
+                        elif isinstance(client, (dict, str)):
+                            raw_text = client if isinstance(client, str) else json.dumps(client)
+                        else:
+                            raw_text = getattr(client, "text", str(client))
+                    else:
+                        endpoint = (
+                            "https://generativelanguage.googleapis.com/v1beta/models/"
+                            f"{urllib.parse.quote(model, safe='-')}:generateContent"
+                        )
+                        request = urllib.request.Request(
+                            endpoint,
+                            data=json.dumps(payload).encode("utf-8"),
+                            headers={"Content-Type": "application/json", "x-goog-api-key": api_key},
+                            method="POST",
+                        )
+                        with urllib.request.urlopen(request, timeout=60) as response:
+                            response_data = json.loads(response.read().decode("utf-8"))
+                        candidates = response_data.get("candidates", [])
+                        parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
+                        raw_text = "".join(part.get("text", "") for part in parts)
+                    break
+                except Exception as exc:
+                    if attempt < max_retries and _is_retryable_http_error(exc):
+                        sleep_time = backoff_base * (2 ** attempt)
+                        time.sleep(sleep_time)
+                        continue
+                    raise
 
             if not raw_text:
                 raise ValueError("Gemini returned no analysis text.")

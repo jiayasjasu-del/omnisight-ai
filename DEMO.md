@@ -19,7 +19,7 @@ OmniSight is a **UI audit and human-reviewed repair workflow prototype** designe
 ### Honest Limitations
 - **Prototype scope**: OmniSight is an internship prototype for responsive auditing and human-reviewed repair workflows. Its supported CSS preview runs only in disposable browser pages; it does not change the audited site's source files or persistent state.
 - **Local-first focus**: Optimized for local development servers (`127.0.0.1` / `localhost`), not public cloud web crawling.
-- **Zero-call default for AI**: When neither `GEMINI_API_KEY` nor `OPENAI_API_KEY` is provided, AI analysis reports `not_configured`. The deterministic audit and browser checks run 100% locally with zero external AI network requests.
+- **Zero-call default for AI**: When neither `GEMINI_API_KEY` nor `OPENAI_API_KEY` is provided, AI analysis reports `not_configured`. The deterministic audit and browser checks run 100% locally with zero external AI network requests. When enabled, Gemini defaults to `gemini-3.1-flash-lite` (which can be overridden with `GEMINI_MODEL`), with automatic retry on HTTP 429/503.
 - **Draft-only PRs & token requirement**: Without `GITHUB_TOKEN` set on the backend, reviewers can open and inspect the full diff preview, but cannot create a draft PR (the create button is safely disabled and the server reports `not_configured`). When configured, PRs are strictly created as GitHub **Drafts** (`draft: true`). The demo must stop at the preview and must not submit a PR.
 - **Self-healing demo scope**: The self-healing demonstration applies only an approved allowlisted CSS rule to a temporary copy of the oversized-image sample. The original fixture file remains cryptographically unchanged (verified via SHA-256 before/after hashes), human review is strictly required, and arbitrary websites are not automatically repaired.
 
@@ -134,7 +134,7 @@ npm run dev -- --host 127.0.0.1
    - Emphasize: *"The original fixture file is NEVER edited in place, code is NEVER committed, pushed, or PR'd, and arbitrary websites are not automatically repaired."*
 3. **AI Analysis State**:
    - Point out the AI analysis card showing `Status: not_configured`.
-   - Explain: *"When neither `GEMINI_API_KEY` nor `OPENAI_API_KEY` is set on the server, OmniSight makes zero external AI requests and runs its deterministic browser checks locally. If enabled, the selected vision model analyzes the captured screenshots for visual clipping and color contrast."*
+   - Explain: *"When neither `GEMINI_API_KEY` nor `OPENAI_API_KEY` is set on the server, OmniSight makes zero external AI requests and runs its deterministic browser checks locally. If enabled, the vision model (defaulting to gemini-3.1-flash-lite, overridable with GEMINI_MODEL) analyzes the captured screenshots for visual clipping and color contrast."*
 4. **GitHub Draft PR Review Modal**:
    - On the broken audit's repair proposal card, click **"Review GitHub Draft PR"**.
    - Show the review modal:

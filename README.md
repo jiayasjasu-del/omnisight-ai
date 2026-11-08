@@ -100,9 +100,9 @@ From the repository root:
 # Optional: Gemini visual analysis (recommended). Set before starting backend.
 # Never commit API keys or put them in code, logs, or shared config.
 $env:GEMINI_API_KEY = "your-gemini-api-key"
-# Optional: select provider/model (defaults to Gemini when GEMINI_API_KEY is present)
+# Optional: select provider/model (defaults to Gemini with gemini-3.1-flash-lite; GEMINI_MODEL can override it)
 # $env:AI_PROVIDER = "gemini"
-# $env:GEMINI_MODEL = "gemini-3.8-flash"
+# $env:GEMINI_MODEL = "gemini-3.1-flash-lite"
 
 # OpenAI remains supported as an alternative:
 # $env:OPENAI_API_KEY = "your-openai-api-key"
@@ -112,7 +112,7 @@ $env:GEMINI_API_KEY = "your-gemini-api-key"
 .\.venv\Scripts\python.exe -m uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-If neither API key is set, UI audits remain fully functional, running all browser checks and returning `ai_analysis.status = "not_configured"`. When configured, the backend sends the captured desktop and mobile screenshots and browser findings to the selected vision model for visual review (clipped content, overlapping elements, and contrast). The model does not edit files or apply repairs. `GEMINI_API_KEY` selects Gemini by default; use `AI_PROVIDER` to explicitly choose `gemini` or `openai` when both keys are present.
+If neither API key is set, UI audits remain fully functional, running all browser checks and returning `ai_analysis.status = "not_configured"`. When configured, the backend sends the captured desktop and mobile screenshots and browser findings to the selected vision model for visual review (clipped content, overlapping elements, and contrast). The model does not edit files or apply repairs. `GEMINI_API_KEY` selects Gemini by default with model `gemini-3.1-flash-lite` (override with `GEMINI_MODEL`); use `AI_PROVIDER` to explicitly choose `gemini` or `openai` when both keys are present. Transient HTTP 429 or 503 errors automatically retry up to 3 times with short backoff.
 
 The interactive OpenAPI documentation will be available at `http://127.0.0.1:8000/docs`.
 
@@ -217,9 +217,9 @@ The model identifies visual problems that rule-based DOM checks often miss:
    # Windows PowerShell
    $env:GEMINI_API_KEY = "your-gemini-api-key-here"
 
-   # Optional: select Gemini and override its default model
+   # Optional: select Gemini and override its default model (defaults to gemini-3.1-flash-lite; GEMINI_MODEL can override it)
    # $env:AI_PROVIDER = "gemini"
-   # $env:GEMINI_MODEL = "gemini-3.8-flash"
+   # $env:GEMINI_MODEL = "gemini-3.1-flash-lite"
 
    # Alternatively, use OpenAI
    # $env:OPENAI_API_KEY = "your-openai-api-key-here"
