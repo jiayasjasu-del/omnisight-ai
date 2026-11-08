@@ -261,7 +261,7 @@ def run_browser_audit_on_fixture(
                         page.goto(f"http://127.0.0.1:{port}/broken", wait_until="load", timeout=15000)
                         findings_before.extend(audit_page(page, vp_name))
                         shot_path = output_dir / f"self-heal-before-{vp_name}.png"
-                        page.screenshot(path=str(shot_path), timeout=10000)
+                        page.screenshot(path=str(shot_path), timeout=30000, animations="disabled")
                         screenshots_before[vp_name] = str(shot_path.resolve())
                     finally:
                         page.close()
@@ -273,7 +273,7 @@ def run_browser_audit_on_fixture(
                         page.goto(f"http://127.0.0.1:{port}/repaired", wait_until="load", timeout=15000)
                         findings_after.extend(audit_page(page, vp_name))
                         shot_path = output_dir / f"self-heal-after-{vp_name}.png"
-                        page.screenshot(path=str(shot_path), timeout=10000)
+                        page.screenshot(path=str(shot_path), timeout=30000, animations="disabled")
                         screenshots_after[vp_name] = str(shot_path.resolve())
                     finally:
                         page.close()
