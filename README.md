@@ -375,3 +375,8 @@ Screenshots are written to `artifacts/omnistore-desktop.png` and `artifacts/omni
 
 OmniSight dashboard with Gemini AI visual suggestions. AI suggestions are not confirmed defects and need human review.
 
+
+## Screenshots
+
+OmniSight dashboard with Gemini AI visual suggestions. AI suggestions are not confirmed defects and need human review.
+
