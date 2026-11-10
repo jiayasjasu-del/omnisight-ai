@@ -370,3 +370,8 @@ Screenshots are written to `artifacts/omnistore-desktop.png` and `artifacts/omni
 - Verification results: All 8 self-healing tests in `tests/test_self_healing.py` pass; frontend linter (`oxlint`) passes with 0 errors and 0 warnings; production frontend build (`vite build`) succeeds in ~411ms; all 37 core/PR tests pass (45 total passing automated tests).
 
 
+
+## Screenshots
+
+OmniSight dashboard with Gemini AI visual suggestions. AI suggestions are not confirmed defects and need human review.
+
